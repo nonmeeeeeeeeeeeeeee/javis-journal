@@ -32,7 +32,7 @@ function applyAuthCookies(
   return response;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   let authCookiesToSet: CookieToSet[] = [];
   let authHeadersToSet: Record<string, string> = {};
