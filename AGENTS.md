@@ -19,8 +19,22 @@ silent instant save/sync, and no long-run freeze — polish over feature count.
 > algorithms ALG-1…ALG-9). Read those before implementing a story.
 
 ## Status
-Scaffolded skeleton only — **no feature code has been written yet.** Development starts from
-the milestone roadmap in `Wiki Javi's Journal/PLAN.md`.
+Milestone roadmap and DAG live in `Wiki Javi's Journal/PLAN.md`; each milestone's resolved
+execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodology below).
+
+- [x] **M1 — Foundation + auth** (US-1) — schema, RLS, private storage bucket, Supabase
+      clients, allowlist gate, session proxy, login/denied pages, health cron all done and
+      committed. **One manual step left:** repairing the Google OAuth redirect URI in the
+      Google/Supabase console.
+- [ ] M2 — Local-first + sync (US-11, sync half of US-13)
+- [ ] M3 — Image pipeline (compression half of US-13)
+- [ ] M4 — Calendar views (US-2, US-3, US-4, US-5)
+- [ ] M5 — Stamper / cutter (US-6)
+- [ ] M6 — Day editor (US-7, US-8)
+- [ ] M7 — Stickers + tray (US-9)
+- [ ] M8 — Pokémon frames (US-10)
+- [ ] M9 — PNG export (US-12)
+- [ ] M10 — Stability gate + polish + ship (US-13 hard gate, US-14)
 
 ## Stack
 - **Next.js (App Router) + React + TypeScript**, deployed on Vercel.
@@ -46,6 +60,8 @@ the milestone roadmap in `Wiki Javi's Journal/PLAN.md`.
 - `src/lib/image/` — image pipeline + stamp cutter (ALG-1/ALG-2).
 - `src/lib/supabase/` — browser + server Supabase clients (`@supabase/ssr`).
 - `src/lib/auth/` — allowlist gate helpers + owner-override.
+- `src/proxy.ts` — session-refresh + login/home redirect proxy (this Next.js version
+  renamed `middleware.ts` → `proxy.ts`; see the banner at the top of this file).
 - `public/frames/` — Pokémon `border-image` frame assets. `public/stickers/` — seeded stickers.
 
 ## Environment
@@ -53,9 +69,33 @@ Copy `.env.local.example` → `.env.local` and fill in the Supabase project keys
 `OWNER_OVERRIDE_EMAIL`. Never commit `.env.local`.
 
 ## Commands
-- `npm run dev` — start the dev server (http://localhost:3000).
-- `npm run build` / `npm run start` — production build / serve.
-- `npm run lint` — ESLint.
+- **Package manager: pnpm** (pinned via `packageManager` in `package.json`). Don't
+  reintroduce `package-lock.json`.
+- `pnpm dev` — start the dev server (http://localhost:3000).
+- `pnpm build` / `pnpm start` — production build / serve.
+- `pnpm lint` — ESLint.
+
+## Methodology
+Each milestone (M2…M10) is worked in two phases:
+
+1. **Design** — run `/grill-me` against the milestone's slice of `PLAN.md` / `DESIGN.md`
+   to resolve every open decision (data shapes, edge cases, ordering, naming) before any
+   code is written. The output is `M{N}-PLAN.md`, saved to `Wiki Javi's Journal/plans/`,
+   with a task DAG and a definition of done.
+2. **Build** — execute the plan:
+   - If the DAG has genuinely independent leaf tasks (e.g. a DB migration alongside
+     application code), use `/parallel-plan` to run them concurrently as `codex:rescue`
+     agents in isolated git worktrees.
+   - Otherwise — a single thread of work, or tasks with real interdependencies — build
+     directly in the main worktree; don't pay for agent isolation that isn't needed.
+   - `pnpm lint` and `pnpm build` must pass before a task counts as done.
+   - Commit per task with a conventional `feat:`/`chore:`/`fix:` message, not one giant
+     milestone commit.
+
+M1 was built this way. Two of its three parallel-plan tasks lost git state mid-run and
+needed manual recovery onto `master` (see `.claude/dag-state.json`) — a known failure mode
+of the worktree/agent flow to watch for, not a reason to avoid parallelizing genuinely
+independent work.
 
 ## Guardrails
 - This is a personal gift locked to Javi's Google account — keep sign-up disabled behind the
