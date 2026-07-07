@@ -1,0 +1,64 @@
+{
+  "plan_source": "M1-PLAN.md",
+  "started_at": "2026-07-07T03:11:28Z",
+  "nodes": {
+    "1": {
+      "title": "Storage bucket + policies",
+      "description": "Create private Supabase Storage bucket 'images' plus storage.objects RLS policies scoped to auth.uid() folder prefix, as a new migration file.",
+      "files": ["supabase/migrations/"],
+      "wave": 1,
+      "status": "done",
+      "branch": "worktree-agent-a42fad0892400974e (merged, deleted)",
+      "agent_id": "a42fad0892400974e",
+      "started_at": "2026-07-07T03:11:28Z",
+      "completed_at": "2026-07-07T03:20:00Z",
+      "error": null
+    },
+    "2": {
+      "title": "Auth core",
+      "description": "Implement shared DB row types, Supabase browser/server/service clients (@supabase/ssr), allowlist helper, the /api/auth/gate OAuth callback route, and middleware.ts session-refresh/redirect logic.",
+      "files": [
+        "src/lib/db/types.ts",
+        "src/lib/supabase/browser.ts",
+        "src/lib/supabase/server.ts",
+        "src/lib/supabase/service.ts",
+        "src/lib/auth/allowlist.ts",
+        "src/app/api/auth/gate/route.ts",
+        "middleware.ts"
+      ],
+      "wave": 1,
+      "status": "done",
+      "branch": "worktree-agent-a5aab4d5fb1d8a1d3 (git lost mid-run; files applied manually to master)",
+      "agent_id": "a5aab4d5fb1d8a1d3",
+      "started_at": "2026-07-07T03:11:28Z",
+      "completed_at": "2026-07-07T03:35:00Z",
+      "error": null
+    },
+    "3": {
+      "title": "UI + edges",
+      "description": "Build login page, denied page, replace home page boilerplate with authed placeholder, health cron route, vercel.json cron config, and rewrite .env.local.example to the real key contract.",
+      "files": [
+        "src/app/login/page.tsx",
+        "src/app/login/login.module.css",
+        "src/app/denied/page.tsx",
+        "src/app/denied/denied.module.css",
+        "src/app/page.tsx",
+        "src/app/api/health/route.ts",
+        "vercel.json",
+        ".env.local.example"
+      ],
+      "wave": 2,
+      "status": "done",
+      "branch": "worktree-agent-a63895c3863d6375f (git lost mid-run; files applied manually to master)",
+      "agent_id": "a63895c3863d6375f",
+      "started_at": "2026-07-07T03:40:00Z",
+      "completed_at": "2026-07-07T04:20:00Z",
+      "error": null
+    }
+  },
+  "completed_summaries": {
+    "1": "Added a migration creating the private 'images' Supabase Storage bucket plus storage.objects RLS policies (select/insert/update/delete) scoped to each user's auth.uid() folder prefix. Idempotent via existence checks.",
+    "2": "Implemented shared DB row types, browser/server/service Supabase clients (@supabase/ssr), the isAllowed() allowlist+owner-override check, the /api/auth/gate OAuth callback (exchange code, check allowlist, upsert profile, redirect), and middleware.ts session refresh with login/home redirects. Middleware matcher excludes /api/auth/gate, /api/health, /denied, and static assets.",
+    "3": "Built the Google sign-in page + neutral denied page (CSS Modules), replaced the create-next-app home page with an authed server-component placeholder, added the Bearer-protected /api/health cron warm-ping route, vercel.json's daily cron entry, and rewrote .env.local.example to the real key contract."
+  }
+}

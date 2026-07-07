@@ -37,6 +37,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# claude code (local-only; dag-state.json is committed as milestone history)
+.claude/worktrees/
+.claude/settings.local.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
