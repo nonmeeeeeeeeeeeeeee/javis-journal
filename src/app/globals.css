@@ -1,17 +1,75 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens (Tailwind v4 CSS-first @theme)
+   Base = "pastel" — the shipped soft-cozy theme. These generate utilities like
+   bg-paper, text-ink, border-line, font-title, rounded-cell, etc.
+   Dev-time alternate aesthetics override the same vars via [data-theme] below.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-page: #fff8ef;
+  --color-paper: #fffdf8;
+  --color-ink: #3b332f;
+  --color-muted: #8a7770;
+  --color-line: #eadad1;
+  --color-line-soft: #f2e6df;
+  --color-accent: #eaa9b8;
+  --color-accent-soft: #f8ebe9;
+  --color-today-bg: #b8dfd0;
+  --color-today-ink: #285246;
+
+  --font-title: Georgia, "Times New Roman", Times, serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+
+  --radius-cell: 0.72rem;
+  --radius-card: 1.15rem;
+  --radius-control: 999px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ---------------------------------------------------------------------------
+   Dev-time aesthetic themes — flip <html data-theme="…"> to compare/tune.
+   "pastel" is the @theme base above (ships), so it needs no override block.
+--------------------------------------------------------------------------- */
+[data-theme="paper"] {
+  --color-page: #f7f7f4;
+  --color-paper: #ffffff;
+  --color-ink: #101010;
+  --color-muted: #545454;
+  --color-line: #111111;
+  --color-line-soft: #d9d9d9;
+  --color-accent: #101010;
+  --color-accent-soft: #f2f2f2;
+  --color-today-bg: #111111;
+  --color-today-ink: #ffffff;
+  --radius-cell: 0;
+  --radius-card: 0;
+  --radius-control: 0;
 }
 
-html {
-  height: 100%;
+[data-theme="scrapbook"] {
+  --color-page: #efe3cf;
+  --color-paper: #fff4dd;
+  --color-ink: #3c2b21;
+  --color-muted: #7d5f4c;
+  --color-line: #6b4f3a;
+  --color-line-soft: #dbc4a5;
+  --color-accent: #da7774;
+  --color-accent-soft: rgba(122, 156, 130, 0.22);
+  --color-today-bg: #f4c95d;
+  --color-today-ink: #3c2b21;
+  --radius-cell: 0.28rem;
+  --radius-card: 0.45rem;
+  --radius-control: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Base globals
+--------------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html,
@@ -20,21 +78,18 @@ body {
   overflow-x: hidden;
 }
 
-body {
+html {
   min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: var(--color-page);
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+body {
+  min-height: 100svh;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  background-color: var(--color-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -42,8 +97,25 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+/* Subtle per-theme page texture (color already re-skins via the token vars) */
+[data-theme="pastel"] body {
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(250, 207, 214, 0.5) 0 0.42rem, transparent 0.46rem),
+    radial-gradient(circle at 86% 12%, rgba(184, 223, 208, 0.42) 0 0.34rem, transparent 0.38rem),
+    linear-gradient(135deg, rgba(255, 222, 189, 0.26), rgba(196, 225, 239, 0.24));
+}
+
+[data-theme="paper"] body {
+  background-image:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.018) 1px, transparent 1px);
+  background-size: 1.35rem 1.35rem, 1.35rem 1.35rem;
+}
+
+[data-theme="scrapbook"] body {
+  background-image:
+    radial-gradient(circle at 16% 20%, rgba(78, 57, 37, 0.1) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 76% 32%, rgba(255, 255, 255, 0.28) 0 1px, transparent 1.5px),
+    linear-gradient(115deg, rgba(126, 91, 51, 0.12), transparent 38%, rgba(255, 255, 255, 0.18) 60%, transparent 78%);
+  background-size: 1.1rem 1.1rem, 1.35rem 1.35rem, auto;
 }

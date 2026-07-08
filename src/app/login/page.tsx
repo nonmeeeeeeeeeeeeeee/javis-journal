@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/browser";
-import styles from "./login.module.css";
 
 export default function LoginPage() {
   return (
@@ -42,20 +41,30 @@ function LoginCard() {
   }
 
   return (
-    <main className={styles.page}>
-      <section className={styles.card} aria-labelledby="login-title">
-        <h1 id="login-title" className={styles.title}>
+    <main className="flex min-h-[100svh] items-center justify-center p-6">
+      <section
+        className="flex w-full max-w-sm flex-col gap-[18px] rounded-card border border-line bg-paper p-8 shadow-[0_18px_48px_rgba(88,74,58,0.12)]"
+        aria-labelledby="login-title"
+      >
+        <h1
+          id="login-title"
+          className="text-center font-title text-3xl font-semibold text-ink"
+        >
           Javi&apos;s Journal
         </h1>
         <button
-          className={styles.button}
+          className="min-h-12 rounded-card bg-[#425f58] font-semibold text-[#fffdf9] transition-colors hover:not-disabled:bg-[#354e48] disabled:cursor-wait disabled:opacity-70"
           type="button"
           onClick={handleSignIn}
           disabled={isLoading}
         >
           {isLoading ? "Signing in..." : "Sign in with Google"}
         </button>
-        {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+        {errorMessage ? (
+          <p className="text-center text-[0.95rem] leading-snug text-[#9c3b43]">
+            {errorMessage}
+          </p>
+        ) : null}
       </section>
     </main>
   );

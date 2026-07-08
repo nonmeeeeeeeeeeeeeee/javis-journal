@@ -48,7 +48,14 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
   (q0.8) + 256px thumbnail; only compressed + thumb upload, originals stay on-device.
 - **Cutter**: canvas-based masking (`destination-in`), crop stored in normalized source-pixel
   space (never CSS `clip-path`, never a baked cutout).
-- **Styling**: plain CSS Modules (soft cozy pastel aesthetic).
+- **Styling**: **Tailwind CSS v4** (CSS-first `@theme` token layer in `src/app/globals.css`;
+  PostCSS plugin, no `tailwind.config.js`). Semantic design tokens (`--color-paper/ink/
+  accent/today`, `--font-title/body`, `--radius-*`) drive utilities (`bg-paper`, `text-ink`,
+  `font-title`, …). **Swappable `data-theme`** aesthetics: `pastel` ships (set on `<html>`);
+  `paper` + `scrapbook` are dev-time comparison themes (override the same token vars). No OS
+  dark mode — the chosen aesthetic is committed. CSS Modules may still be used for complex
+  canvas/cutter styling where utilities fall short. Tune the look live at `/preview`
+  (dev-only, fit-to-screen month calendar + theme switcher).
 
 ## Layout
 - `src/app/` — routes (App Router). API routes: `api/auth/gate` (allowlist sign-in gate),
