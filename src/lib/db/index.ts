@@ -1,0 +1,39 @@
+import Dexie, { type Table } from "dexie";
+
+import type {
+  Entry,
+  ImageRow,
+  PlacedSticker,
+  Profile,
+  Stamp,
+  StickerAsset,
+} from "./types";
+import type { SyncMetaRow, SyncOutboxRow } from "./sync-types";
+
+export class JournalDB extends Dexie {
+  entries!: Table<Entry, string>;
+  stamps!: Table<Stamp, string>;
+  placed_stickers!: Table<PlacedSticker, string>;
+  profiles!: Table<Profile, string>;
+  images!: Table<ImageRow, string>;
+  sticker_assets!: Table<StickerAsset, string>;
+  sync_outbox!: Table<SyncOutboxRow, string>;
+  sync_meta!: Table<SyncMetaRow, string>;
+
+  constructor() {
+    super("javis-journal");
+
+    this.version(1).stores({
+      entries: "id",
+      stamps: "id, entry_id",
+      placed_stickers: "id",
+      profiles: "user_id",
+      images: "id",
+      sticker_assets: "id",
+      sync_outbox: "id, [table+rowId]",
+      sync_meta: "table",
+    });
+  }
+}
+
+export const db = new JournalDB();
