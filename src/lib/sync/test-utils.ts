@@ -67,6 +67,16 @@ export function createMockSupabase(initialState: InitialState = {}) {
   const rowFailures: RowFailure[] = [];
   let authUserId = "mock-user-id";
   let authError: MockError | null = null;
+  // When true, every request throws — simulates being offline. Toggle to test backoff.
+  let networkDown = false;
+  // Counts getUser() calls — one per push/pull cycle, so tests can count sync attempts.
+  let authCallCount = 0;
+
+  const throwIfNetworkDown = () => {
+    if (networkDown) {
+      throw toError("Simulated network failure.");
+    }
+  };
 
   const makeFailure = (options?: FailureOptions): PendingFailure => ({
     error: toError(options?.error),
@@ -124,6 +134,9 @@ export function createMockSupabase(initialState: InitialState = {}) {
     const rowFailureErrors: MockError[] = [];
 
     for (const row of rowList) {
+      // A row failure persists (models a constraint violation): the row keeps failing on
+      // both the batch upsert and push.ts's per-row retry, so it gets quarantined rather
+      // than silently succeeding on the retry.
       const failureIndex = rowFailures.findIndex(
         (failure) =>
           failure.table === table && row[primaryKey] === failure.primaryKeyValue,
@@ -150,10 +163,6 @@ export function createMockSupabase(initialState: InitialState = {}) {
       successfulRows.push(clonedRow);
     }
 
-    for (const failureIndex of [...new Set(failedRowIndexes)].sort((a, b) => b - a)) {
-      rowFailures.splice(failureIndex, 1);
-    }
-
     store.set(table, nextRows);
 
     return {
@@ -167,6 +176,7 @@ export function createMockSupabase(initialState: InitialState = {}) {
 
   const createQueryBuilder = (table: string) => {
     const predicates: Predicate[] = [];
+    let orderSpec: { column: string; ascending: boolean } | null = null;
 
     const builder = {
       select(_columns?: string) {
@@ -181,7 +191,13 @@ export function createMockSupabase(initialState: InitialState = {}) {
         predicates.push({ column, operator: "eq", value });
         return builder;
       },
+      order(column: string, options?: { ascending?: boolean }) {
+        orderSpec = { column, ascending: options?.ascending ?? true };
+        return builder;
+      },
       async upsert(rows: MockRow | MockRow[]) {
+        throwIfNetworkDown();
+
         const failure = consumeFailure(table);
 
         if (failure) {
@@ -197,6 +213,8 @@ export function createMockSupabase(initialState: InitialState = {}) {
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
       ) {
         const query = async () => {
+          throwIfNetworkDown();
+
           const failure = consumeFailure(table);
 
           if (failure) {
@@ -204,6 +222,17 @@ export function createMockSupabase(initialState: InitialState = {}) {
           }
 
           const rows = cloneRows(applyPredicates(store.get(table) ?? [], predicates));
+
+          if (orderSpec) {
+            const { column, ascending } = orderSpec;
+            rows.sort((a, b) => {
+              const left = a[column];
+              const right = b[column];
+              const cmp = compareValues(left, right) ? 1 : compareValues(right, left) ? -1 : 0;
+              return ascending ? cmp : -cmp;
+            });
+          }
+
           return { data: rows, error: null };
         };
 
@@ -220,6 +249,9 @@ export function createMockSupabase(initialState: InitialState = {}) {
     },
     auth: {
       async getUser() {
+        authCallCount += 1;
+        throwIfNetworkDown();
+
         const failure = consumeFailure();
 
         if (failure) {
@@ -256,6 +288,12 @@ export function createMockSupabase(initialState: InitialState = {}) {
     },
     setAuthError(error: MockError | string | null) {
       authError = error === null ? null : toError(error);
+    },
+    setNetworkDown(down: boolean) {
+      networkDown = down;
+    },
+    getAuthCallCount() {
+      return authCallCount;
     },
   };
 }

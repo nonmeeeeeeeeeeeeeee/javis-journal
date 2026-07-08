@@ -35,10 +35,20 @@ export class PushNetworkError extends Error {
 
 export async function flush(): Promise<FlushResult> {
   const supabase = createClient();
+
+  let userResult;
+  try {
+    userResult = await supabase.auth.getUser();
+  } catch (error) {
+    throw new PushNetworkError("Network failure while resolving the current user.", {
+      cause: error,
+    });
+  }
+
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = userResult;
 
   if (userError) {
     throw new PushNetworkError("Unable to resolve the current Supabase user.", {

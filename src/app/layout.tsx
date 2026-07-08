@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SyncBoot from "@/components/SyncBoot";
 
 export const metadata: Metadata = {
   title: "Javi's Journal",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-theme="pastel">
-      <body>{children}</body>
+      <body>
+        <SyncBoot />
+        {children}
+      </body>
     </html>
   );
 }
