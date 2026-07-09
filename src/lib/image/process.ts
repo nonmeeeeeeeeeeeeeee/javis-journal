@@ -12,8 +12,6 @@ import {
   thumbDims,
   type Dims,
 } from "./geometry";
-import { heicToJpeg, isHeic, readMagicBytes } from "./heic";
-
 export type ProcessKind = "photo" | "sticker";
 
 export type ProcessResult = {
@@ -102,21 +100,10 @@ async function renderTo(
  */
 export async function processBitmap(source: Blob, kind: ProcessKind): Promise<ProcessResult> {
   try {
-    // HEIC: try native decode first (iOS/Safari), transcode only if that fails.
-    let input: Blob = source;
-    if (isHeic(await readMagicBytes(source))) {
-      let nativeOk = false;
-      try {
-        const probe = await createImageBitmap(source);
-        probe.close();
-        nativeOk = true;
-      } catch {
-        nativeOk = false;
-      }
-      if (!nativeOk) input = await heicToJpeg(source);
-    }
-
-    let bitmap = await createImageBitmap(input, { imageOrientation: "from-image" });
+    // `source` is already natively decodable: HEIC is transcoded on the main thread
+    // (host.ensureDecodable) before we get here, because heic2any needs the DOM and
+    // throws inside a Web Worker.
+    let bitmap = await createImageBitmap(source, { imageOrientation: "from-image" });
     let srcW = bitmap.width;
     let srcH = bitmap.height;
 
@@ -124,7 +111,7 @@ export async function processBitmap(source: Blob, kind: ProcessKind): Promise<Pr
     const dt = decodeTarget(srcW, srcH, DECODE_AREA_CAP);
     if (dt) {
       bitmap.close();
-      bitmap = await createImageBitmap(input, {
+      bitmap = await createImageBitmap(source, {
         imageOrientation: "from-image",
         resizeWidth: dt.width,
         resizeHeight: dt.height,

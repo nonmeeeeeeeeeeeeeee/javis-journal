@@ -1,6 +1,7 @@
 // Public pipeline entry. Runs processBitmap in a Web Worker (OffscreenCanvas) when
 // available, falling back to the main thread when a worker/OffscreenCanvas is absent.
 
+import { heicToJpeg, isHeic, readMagicBytes } from "./heic";
 import {
   ImagePipelineError,
   processBitmap,
@@ -71,16 +72,43 @@ function runInWorker(file: Blob, kind: ProcessKind): Promise<ProcessResult> {
  * and re-runs on the main thread.
  */
 export async function processImage(file: Blob, kind: ProcessKind): Promise<ProcessResult> {
+  // HEIC transcode must run on the main thread (heic2any uses the DOM and throws in a
+  // worker), so it happens here before we hand a decodable blob to the worker.
+  const decodable = await ensureDecodable(file);
+
   if (workerSupported === null) workerSupported = supportsWorkerOffscreen();
 
   if (workerSupported) {
     try {
-      return await runInWorker(file, kind);
+      return await runInWorker(decodable, kind);
     } catch (err) {
       if (err instanceof ImagePipelineError) throw err; // real pipeline failure — do not mask
       workerSupported = false; // infra failure — degrade to main thread for this and future calls
     }
   }
 
-  return processBitmap(file, kind);
+  return processBitmap(decodable, kind);
+}
+
+/**
+ * Return a natively-decodable blob. Non-HEIC inputs pass through. HEIC is decoded
+ * natively when the platform supports it (iOS/Safari); otherwise it is transcoded to
+ * JPEG via heic2any on the main thread (Android Chrome has no native HEIC decode).
+ */
+async function ensureDecodable(file: Blob): Promise<Blob> {
+  if (!isHeic(await readMagicBytes(file))) return file;
+
+  try {
+    const probe = await createImageBitmap(file);
+    probe.close();
+    return file; // native HEIC decode works here (and in the worker)
+  } catch {
+    // fall through to transcode
+  }
+
+  try {
+    return await heicToJpeg(file);
+  } catch (err) {
+    throw new ImagePipelineError("HEIC transcode failed", { cause: err });
+  }
 }
