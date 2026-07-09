@@ -18,6 +18,7 @@ vi.mock("./host", () => ({
 
 import { ingestImage } from "./ingest";
 import { ImagePipelineError } from "./process";
+import { __resetEngineForTests } from "@/lib/sync/engine";
 
 function fakeFile(content = "orig"): File {
   // A Blob is a structurally-adequate stand-in (ingest uses it only as a blob + map key).
@@ -41,6 +42,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  // ingest now arms the engine's debounced flush; clear it so no timer leaks across tests.
+  __resetEngineForTests();
   vi.restoreAllMocks();
 });
 

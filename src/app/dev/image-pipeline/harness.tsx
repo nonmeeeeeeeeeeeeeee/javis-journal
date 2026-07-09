@@ -8,6 +8,8 @@ import { isHeic, readMagicBytes } from "@/lib/image/heic";
 import { ingestImage } from "@/lib/image/ingest";
 import { ImagePipelineError } from "@/lib/image/process";
 import { getThumbUrl, type ThumbHandle } from "@/lib/image/thumb-url";
+import { flushNow } from "@/lib/sync/engine";
+import { getSyncStatus } from "@/lib/sync/status";
 
 type UploadState = "pending" | "quarantined" | "durable";
 
@@ -56,6 +58,7 @@ export function ImagePipelineHarness() {
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string>("idle");
 
   const refresh = useCallback(async () => {
     const ids = await db.image_blobs.orderBy("createdAt").reverse().primaryKeys();
@@ -72,6 +75,7 @@ export function ImagePipelineHarness() {
       }
     }
     setItems(inspected);
+    setSyncStatus(getSyncStatus());
     // Release the object URLs on the next refresh (best-effort demo hygiene).
     return () => handles.forEach((h) => h.release());
   }, []);
@@ -139,9 +143,15 @@ export function ImagePipelineHarness() {
 
       <div style={{ margin: "16px 0", display: "flex", gap: 12, alignItems: "center" }}>
         <input type="file" accept="image/*" onChange={onPick} disabled={busy} />
+        <button onClick={() => void flushNow()} disabled={busy}>
+          Sync now
+        </button>
         <button onClick={() => void onEvict()} disabled={busy}>
           Force evictOriginals()
         </button>
+        <span style={{ fontSize: 13, color: "#666" }}>
+          sync: <b>{syncStatus}</b>
+        </span>
       </div>
 
       {busy && <p>Processing…</p>}

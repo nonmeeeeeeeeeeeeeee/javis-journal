@@ -4,6 +4,7 @@
 import { db } from "@/lib/db";
 import type { ImageBlobRow } from "@/lib/db/image-types";
 import type { ImageRow } from "@/lib/db/types";
+import { scheduleFlush } from "@/lib/sync/engine";
 import { markDirty } from "@/lib/sync/outbox";
 import { createClient } from "@/lib/supabase/browser";
 import { processImage } from "./host";
@@ -64,6 +65,10 @@ async function doIngest(file: File, kind: ProcessKind): Promise<string> {
     await db.images.put(imageRow);
     await markDirty("images", id, "upload");
   });
+
+  // Arm the debounced flush so the upload actually happens. outbox.markDirty only
+  // records the row; the engine owns scheduling (startSyncLoop only pulls).
+  scheduleFlush();
 
   return id;
 }
