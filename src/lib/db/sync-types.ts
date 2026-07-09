@@ -2,7 +2,7 @@ export type SyncOutboxRow = {
   id: string;
   table: string;
   rowId: string;
-  op: "upsert" | "delete";
+  op: "upsert" | "delete" | "upload";
   attempts: number;
   quarantined: boolean;
   lastError: string | null;

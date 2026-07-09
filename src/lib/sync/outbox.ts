@@ -7,7 +7,8 @@ export type SyncTable =
   | "entries"
   | "stamps"
   | "placed_stickers"
-  | "profiles";
+  | "profiles"
+  | "images";
 
 export type SyncOperation = SyncOutboxRow["op"];
 

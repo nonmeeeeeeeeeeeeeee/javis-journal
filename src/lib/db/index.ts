@@ -8,6 +8,7 @@ import type {
   Stamp,
   StickerAsset,
 } from "./types";
+import type { ImageBlobRow } from "./image-types";
 import type { SyncMetaRow, SyncOutboxRow } from "./sync-types";
 
 export class JournalDB extends Dexie {
@@ -16,6 +17,7 @@ export class JournalDB extends Dexie {
   placed_stickers!: Table<PlacedSticker, string>;
   profiles!: Table<Profile, string>;
   images!: Table<ImageRow, string>;
+  image_blobs!: Table<ImageBlobRow, string>;
   sticker_assets!: Table<StickerAsset, string>;
   sync_outbox!: Table<SyncOutboxRow, string>;
   sync_meta!: Table<SyncMetaRow, string>;
@@ -32,6 +34,12 @@ export class JournalDB extends Dexie {
       sticker_assets: "id",
       sync_outbox: "id, [table+rowId]",
       sync_meta: "table",
+    });
+
+    // v2: additive image_blobs store (device-local, never synced).
+    // createdAt is indexed for the original-eviction scan.
+    this.version(2).stores({
+      image_blobs: "id, createdAt",
     });
   }
 }
