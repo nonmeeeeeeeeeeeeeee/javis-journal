@@ -64,10 +64,24 @@ export async function proxy(request: NextRequest) {
     },
   );
 
+  const pathname = request.nextUrl.pathname;
+
+  // `/preview` (and its sub-routes like /preview/responsive, /preview/interactive)
+  // are dev-only design-tuning pages with no user data. Let them bypass the auth
+  // gate everywhere EXCEPT the real production site, so the owner can review the
+  // design locally and on Vercel preview (branch) deployments from a phone. The
+  // production site (VERCEL_ENV === "production") keeps them gated.
+  const isProductionSite = process.env.VERCEL_ENV === "production";
+  if (
+    !isProductionSite &&
+    (pathname === "/preview" || pathname.startsWith("/preview/"))
+  ) {
+    return supabaseResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const pathname = request.nextUrl.pathname;
 
   if (!user && pathname !== "/login") {
     return applyAuthCookies(

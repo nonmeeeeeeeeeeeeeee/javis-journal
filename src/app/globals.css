@@ -66,10 +66,15 @@
 /* ---------------------------------------------------------------------------
    Base globals
 --------------------------------------------------------------------------- */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Wrapped in @layer base so Tailwind's utility layer can still override the
+   reset. An unlayered universal `padding: 0` beats every @layer utility, which
+   would silently kill all padding and margin utilities app-wide. */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html,
