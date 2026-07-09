@@ -2,6 +2,7 @@
 // the browser-lifecycle pull cadence. push.ts/pull.ts stay gesture- and timer-agnostic;
 // all scheduling lives here (see M2-PLAN Task 5).
 
+import { evictOriginals } from "@/lib/image/eviction";
 import { markDirty as outboxMarkDirty, type SyncOperation, type SyncTable } from "./outbox";
 import { flush, PushNetworkError } from "./push";
 import { pullAll } from "./pull";
@@ -64,6 +65,8 @@ export async function flushNow(): Promise<void> {
     await flush();
     flushBackoff = BACKOFF_MIN_MS;
     setSyncStatus("idle");
+    // A successful flush means any just-uploaded originals may now be evictable.
+    void evictOriginals();
   } catch (error) {
     // A thrown error means a network/offline failure (row-level rejections are
     // quarantined inside flush() and never throw). Keep the outbox dirty and retry.
@@ -118,6 +121,8 @@ export async function pullNow(): Promise<void> {
  */
 export function startSyncLoop(): () => void {
   void pullNow();
+  // Evict any originals that aged past retention while the app was closed.
+  void evictOriginals();
 
   const onWake = () => {
     if (document.visibilityState === "visible") {

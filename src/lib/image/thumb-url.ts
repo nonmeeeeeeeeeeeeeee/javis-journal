@@ -15,7 +15,7 @@ export type ThumbHandle = {
 const BUCKET = "images";
 const SIGNED_TTL_MS = 24 * 60 * 60 * 1000; // re-mint the cached signed URL after 24h
 const SIGNED_EXPIRES_SEC = 60 * 60 * 24; // request a 24h-valid signed URL
-const LIVE_OBJECT_URL_CAP = 120; // bound live object URLs even on a caller that never releases
+let liveUrlCap = 120; // bound live object URLs even on a caller that never releases
 
 const signedCache = new Map<string, { url: string; expiresAt: number }>();
 
@@ -46,7 +46,7 @@ function objectUrlHandle(blob: Blob): ThumbHandle {
 }
 
 function enforceLruCap(): void {
-  while (liveObjectUrls.size > LIVE_OBJECT_URL_CAP) {
+  while (liveObjectUrls.size > liveUrlCap) {
     const oldest = liveObjectUrls.keys().next().value as string | undefined;
     if (oldest === undefined) break;
     const url = liveObjectUrls.get(oldest);
@@ -168,6 +168,21 @@ async function getSignedUrls(
  * and offline-capable. Best-effort: failures are swallowed. Never clobbers a
  * main/original the cutter may have already downloaded.
  */
+// ---- Test-only hooks (module state persists across cases in a file) ----
+
+export function __resetThumbUrlCacheForTests(): void {
+  signedCache.clear();
+  for (const url of liveObjectUrls.values()) URL.revokeObjectURL(url);
+  liveObjectUrls.clear();
+  tokenSeq = 0;
+  liveUrlCap = 120;
+}
+
+export function __setLiveUrlCapForTests(cap: number): void {
+  liveUrlCap = cap;
+  enforceLruCap();
+}
+
 async function backfillThumb(id: string, signedUrl: string): Promise<void> {
   try {
     const res = await fetch(signedUrl);

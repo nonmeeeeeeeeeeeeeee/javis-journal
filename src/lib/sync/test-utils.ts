@@ -69,6 +69,10 @@ export function createMockSupabase(initialState: InitialState = {}) {
   let authError: MockError | null = null;
   // When true, every request throws — simulates being offline. Toggle to test backoff.
   let networkDown = false;
+  // Storage: bucket -> path -> stored object. Plus a one-shot failure for upload/sign.
+  const storageStore = new Map<string, Map<string, { blob: unknown; contentType?: string }>>();
+  let nextStorageFailure: PendingFailure | null = null;
+  let signedUrlCallCount = 0;
   // Counts getUser() calls — one per push/pull cycle, so tests can count sync attempts.
   let authCallCount = 0;
 
@@ -243,10 +247,61 @@ export function createMockSupabase(initialState: InitialState = {}) {
     return builder;
   };
 
+  const consumeStorageFailure = () => {
+    if (nextStorageFailure) {
+      const failure = nextStorageFailure;
+      nextStorageFailure = null;
+      return failure;
+    }
+    return null;
+  };
+
+  const storage = {
+    from(bucket: string) {
+      const signOne = (path: string) =>
+        `https://mock.storage/${bucket}/${path}?token=signed`;
+
+      return {
+        async upload(path: string, blob: unknown, options?: { contentType?: string }) {
+          throwIfNetworkDown();
+          const failure = consumeStorageFailure();
+          if (failure) return fail<{ path: string }>(failure);
+
+          const bucketMap = storageStore.get(bucket) ?? new Map();
+          bucketMap.set(path, { blob, contentType: options?.contentType });
+          storageStore.set(bucket, bucketMap);
+          return { data: { path }, error: null };
+        },
+        async createSignedUrl(path: string, _expiresIn: number) {
+          void _expiresIn;
+          signedUrlCallCount += 1;
+          throwIfNetworkDown();
+          const failure = consumeStorageFailure();
+          if (failure) return fail<{ signedUrl: string }>(failure);
+          return { data: { signedUrl: signOne(path) }, error: null };
+        },
+        async createSignedUrls(paths: string[], _expiresIn: number) {
+          void _expiresIn;
+          signedUrlCallCount += 1;
+          throwIfNetworkDown();
+          const failure = consumeStorageFailure();
+          if (failure) {
+            return fail<Array<{ path: string; signedUrl: string; error: null }>>(failure);
+          }
+          return {
+            data: paths.map((path) => ({ path, signedUrl: signOne(path), error: null })),
+            error: null,
+          };
+        },
+      };
+    },
+  };
+
   const client = {
     from(table: string) {
       return createQueryBuilder(table);
     },
+    storage,
     auth: {
       async getUser() {
         authCallCount += 1;
@@ -263,6 +318,16 @@ export function createMockSupabase(initialState: InitialState = {}) {
         }
 
         return { data: { user: { id: authUserId } }, error: null };
+      },
+      // getSession reads local session state (no network) — used by ingest.
+      async getSession() {
+        if (authError) {
+          return { data: { session: null }, error: authError };
+        }
+        return {
+          data: { session: { user: { id: authUserId } } },
+          error: null,
+        };
       },
     },
   };
@@ -294,6 +359,19 @@ export function createMockSupabase(initialState: InitialState = {}) {
     },
     getAuthCallCount() {
       return authCallCount;
+    },
+    // Storage controls: one-shot failure + inspection of uploaded objects.
+    failStorageNext(options?: FailureOptions) {
+      nextStorageFailure = makeFailure(options);
+    },
+    getStorageObject(bucket: string, path: string) {
+      return storageStore.get(bucket)?.get(path);
+    },
+    getStorageBucket(bucket: string) {
+      return storageStore.get(bucket);
+    },
+    getSignedUrlCallCount() {
+      return signedUrlCallCount;
     },
   };
 }
