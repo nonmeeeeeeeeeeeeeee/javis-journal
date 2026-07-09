@@ -1,0 +1,91 @@
+{
+  "plan_source": "Wiki Javi's Journal/plans/M2-PLAN.md",
+  "started_at": "2026-07-07T00:00:00Z",
+  "nodes": {
+    "1": {
+      "title": "Dexie schema + outbox/meta",
+      "description": "Define the Dexie JournalDB (v1) with the 6 entity tables typed via existing src/lib/db/types.ts, plus sync_outbox and sync_meta tables and indexes. Export a singleton db.",
+      "files": [
+        "src/lib/db/index.ts",
+        "src/lib/db/sync-types.ts"
+      ],
+      "wave": 1,
+      "status": "done",
+      "branch": "worktree-agent-afb2e69b2fee8270b (agent stalled ~2h/no commit; files verified + applied to master as f9a62b2, worktree removed)",
+      "agent_id": "afb2e69b2fee8270b",
+      "started_at": "2026-07-07T00:05:00Z",
+      "completed_at": "2026-07-08T03:10:00Z",
+      "error": null
+    },
+    "2": {
+      "title": "Push engine (ALG-3)",
+      "description": "outbox.ts (markDirty/clearDirty/quarantine/getPending) and push.ts (flush: batch upsert -> per-row fallback -> quarantine poison rows, backoff signaling, soft-delete via deleted_at).",
+      "files": [
+        "src/lib/sync/outbox.ts",
+        "src/lib/sync/push.ts"
+      ],
+      "wave": 2,
+      "status": "done",
+      "branch": "worktree-agent-ae21c049fb40db8a7",
+      "agent_id": "ae21c049fb40db8a7",
+      "started_at": "2026-07-08T03:12:00Z",
+      "completed_at": "2026-07-08T03:40:00Z",
+      "error": null
+    },
+    "3": {
+      "title": "Pull engine (ALG-4)",
+      "description": "pull.ts: pullLWW for the 4 updated_at tables (cursor + LWW merge + tombstone delete + id tie-break + skip local-dirty-newer), pullAppendOnly for images, full-refetch for sticker_assets, pullAll.",
+      "files": [
+        "src/lib/sync/pull.ts"
+      ],
+      "wave": 2,
+      "status": "done",
+      "branch": "worktree-agent-adf3b7e78753c51e6",
+      "agent_id": "adf3b7e78753c51e6",
+      "started_at": "2026-07-08T03:12:00Z",
+      "completed_at": "2026-07-08T03:30:00Z",
+      "error": null
+    },
+    "4": {
+      "title": "Test tooling setup (vitest + fake-indexeddb)",
+      "description": "Add vitest + fake-indexeddb dev deps, test script, vitest.config.ts with fake-indexeddb/auto setup, and an in-memory mocked Supabase client helper with forced-failure support.",
+      "files": [
+        "vitest.config.ts",
+        "package.json",
+        "src/lib/sync/test-utils.ts"
+      ],
+      "wave": 2,
+      "status": "done",
+      "branch": "worktree-agent-add8bb627d39f98ed",
+      "agent_id": "add8bb627d39f98ed",
+      "started_at": "2026-07-08T03:12:00Z",
+      "completed_at": "2026-07-08T04:00:00Z",
+      "error": null
+    },
+    "5": {
+      "title": "Engine wiring + SyncBoot + integration tests",
+      "description": "status.ts observable, engine.ts (startSyncLoop with visibility/focus/60s cadence + backoff + fresh getUser, flushNow, 800ms debounce wiring), SyncBoot client component mounted in root layout, and end-to-end integration tests.",
+      "files": [
+        "src/lib/sync/engine.ts",
+        "src/lib/sync/status.ts",
+        "src/components/SyncBoot.tsx",
+        "src/app/layout.tsx",
+        "src/lib/sync/*.test.ts"
+      ],
+      "wave": 3,
+      "status": "done",
+      "branch": "(built directly in main worktree; committed)",
+      "agent_id": null,
+      "started_at": null,
+      "completed_at": "2026-07-08T05:00:00Z",
+      "error": null
+    }
+  },
+  "completed_summaries": {
+    "1": "Added src/lib/db/index.ts (JournalDB extends Dexie, v1 schema: entries id / stamps id,entry_id / placed_stickers id / profiles user_id PK / images id / sticker_assets id / sync_outbox id,[table+rowId] / sync_meta table PK; typed Table accessors + singleton db) and src/lib/db/sync-types.ts (SyncOutboxRow, SyncMetaRow). dexie ^4.4.4 already present in package.json (committed with the Tailwind work). lint + build pass.",
+    "2": "src/lib/sync/outbox.ts (markDirty dedupe by [table+rowId] latest-op-wins, clearDirty, quarantine w/ lastError, getPending non-quarantined sorted by createdAt) + push.ts (flush: fresh getUser, per-table batch upsert -> per-row fallback on batch failure -> quarantine poison rows / clearDirty successes; PushNetworkError thrown on fetch-throw or status 0 for Task5 backoff; missing local rows quarantined; soft-delete via upserting local row carrying deleted_at). Verified lint+build on master, committed.",
+    "3": "src/lib/sync/pull.ts: pullLWW (cursor + LWW merge, remote/local updated_at compare, id tie-break via lwwTieKey, skip local-dirty-newer via [table+rowId] outbox lookup, tombstone delete, never resurrect deleted rows, profiles user_id PK), pullAppendOnly for images by created_at insert-if-missing, full-refetch sticker_assets, pullAll runs all 6. Verified lint+build on master, committed.",
+    "4": "vitest ^4 + fake-indexeddb ^6 dev deps + test script; vitest.config.ts (node env, fake-indexeddb/auto setup, excludes .claude/** so leftover worktrees are not scanned); vitest.setup.ts; src/lib/sync/test-utils.ts (createMockSupabase: chainable from().select().gt().eq()/upsert, auth.getUser, failNext/failTable/failRow/setAuthUserId/setAuthError; profiles user_id PK); db-smoke.test.ts. NOTE: failRow splices after first hit -> may not survive push.ts batch+per-row retry; revisit in Task 5 poison-pill test. Verified test+lint+build on master.",
+    "5": "status.ts (pub-sub SyncStatus observable) + engine.ts (markDirty->800ms debounce->flushNow; flushNow/pullNow with 2s->60s exponential backoff, reset on success; startSyncLoop: immediate pull + visibilitychange/focus + 60s interval, returns cleanup) + SyncBoot.tsx (client, useEffect(startSyncLoop)) mounted in layout.tsx <body>. Touch-ups: push.ts wraps getUser network errors as PushNetworkError; test-utils.ts gains .order()/setNetworkDown/persistent failRow/authCallCount; vitest.config.ts gets @-> src alias. 8 integration tests (debounce flush, LWW merge, tie-break, tombstone, backoff+reset, poison-pill) all pass; lint+build+test green."
+  }
+}

@@ -1,64 +1,70 @@
 {
-  "plan_source": "M1-PLAN.md",
-  "started_at": "2026-07-07T03:11:28Z",
+  "plan_source": "Wiki Javi's Journal/plans/M3-PLAN.md",
+  "started_at": "2026-07-09T00:00:00Z",
+  "completed_at": "2026-07-09T04:00:00Z",
+  "execution_note": "Codex-worktree isolation failed again on Windows (both Wave 1 agents hit 10-min timeouts fighting node_modules junction/ACL; neither committed; M3-PLAN.md was untracked so absent from worktrees). Pivoted to direct build in main worktree on ui-design, verifying pnpm lint/build/test per task, per AGENTS.md methodology + feedback_parallel_plan_verify_on_master. Task 1's agent edits were harvested (verified correct); Tasks 2-6 built directly. All Tier-1 gates green (lint + 52 vitest tests + build). Tier-2 owner browser gate still pending (manual).",
   "nodes": {
     "1": {
-      "title": "Storage bucket + policies",
-      "description": "Create private Supabase Storage bucket 'images' plus storage.objects RLS policies scoped to auth.uid() folder prefix, as a new migration file.",
-      "files": ["supabase/migrations/"],
+      "title": "Dexie v2: image_blobs + outbox extension",
+      "files": ["src/lib/db/index.ts", "src/lib/db/image-types.ts", "src/lib/db/sync-types.ts", "src/lib/sync/outbox.ts"],
       "wave": 1,
       "status": "done",
-      "branch": "worktree-agent-a42fad0892400974e (merged, deleted)",
-      "agent_id": "a42fad0892400974e",
-      "started_at": "2026-07-07T03:11:28Z",
-      "completed_at": "2026-07-07T03:20:00Z",
+      "branch": "ui-design (cd1eefc; agent edits harvested)",
+      "completed_at": "2026-07-09T00:30:00Z",
       "error": null
     },
     "2": {
-      "title": "Auth core",
-      "description": "Implement shared DB row types, Supabase browser/server/service clients (@supabase/ssr), allowlist helper, the /api/auth/gate OAuth callback route, and middleware.ts session-refresh/redirect logic.",
-      "files": [
-        "src/lib/db/types.ts",
-        "src/lib/supabase/browser.ts",
-        "src/lib/supabase/server.ts",
-        "src/lib/supabase/service.ts",
-        "src/lib/auth/allowlist.ts",
-        "src/app/api/auth/gate/route.ts",
-        "middleware.ts"
-      ],
+      "title": "Pipeline core + worker (ALG-1)",
+      "files": ["src/lib/image/geometry.ts", "src/lib/image/heic.ts", "src/lib/image/process.ts", "src/lib/image/pipeline.worker.ts", "src/lib/image/host.ts"],
       "wave": 1,
       "status": "done",
-      "branch": "worktree-agent-a5aab4d5fb1d8a1d3 (git lost mid-run; files applied manually to master)",
-      "agent_id": "a5aab4d5fb1d8a1d3",
-      "started_at": "2026-07-07T03:11:28Z",
-      "completed_at": "2026-07-07T03:35:00Z",
+      "branch": "ui-design (f7264e7; built directly)",
+      "completed_at": "2026-07-09T01:30:00Z",
       "error": null
     },
     "3": {
-      "title": "UI + edges",
-      "description": "Build login page, denied page, replace home page boilerplate with authed placeholder, health cron route, vercel.json cron config, and rewrite .env.local.example to the real key contract.",
-      "files": [
-        "src/app/login/page.tsx",
-        "src/app/login/login.module.css",
-        "src/app/denied/page.tsx",
-        "src/app/denied/denied.module.css",
-        "src/app/page.tsx",
-        "src/app/api/health/route.ts",
-        "vercel.json",
-        ".env.local.example"
-      ],
+      "title": "Ingest + local blob store + eviction",
+      "files": ["src/lib/image/ingest.ts", "src/lib/image/eviction.ts", "src/lib/image/storage-paths.ts"],
       "wave": 2,
       "status": "done",
-      "branch": "worktree-agent-a63895c3863d6375f (git lost mid-run; files applied manually to master)",
-      "agent_id": "a63895c3863d6375f",
-      "started_at": "2026-07-07T03:40:00Z",
-      "completed_at": "2026-07-07T04:20:00Z",
+      "branch": "ui-design (6795ee9; built directly)",
+      "completed_at": "2026-07-09T02:30:00Z",
       "error": null
+    },
+    "4": {
+      "title": "Upload branch in flush()",
+      "files": ["src/lib/sync/push.ts", "src/lib/db/image-types.ts"],
+      "wave": 2,
+      "status": "done",
+      "branch": "ui-design (3674103 nullable-main + 13fdebe push)",
+      "completed_at": "2026-07-09T02:45:00Z",
+      "error": null
+    },
+    "5": {
+      "title": "Display helper",
+      "files": ["src/lib/image/thumb-url.ts"],
+      "wave": 2,
+      "status": "done",
+      "branch": "ui-design (3d55220; built directly)",
+      "completed_at": "2026-07-09T03:00:00Z",
+      "error": null
+    },
+    "6": {
+      "title": "Harness route + engine wiring + integration & Tier-2",
+      "files": ["src/app/dev/image-pipeline/page.tsx", "src/app/dev/image-pipeline/harness.tsx", "src/lib/sync/engine.ts", "src/lib/sync/test-utils.ts", "src/lib/image/*.test.ts", "src/lib/sync/images-push.test.ts"],
+      "wave": 3,
+      "status": "done",
+      "branch": "ui-design (8fea2c0; built directly)",
+      "completed_at": "2026-07-09T04:00:00Z",
+      "error": "Tier-2 owner browser gate still pending (manual)."
     }
   },
   "completed_summaries": {
-    "1": "Added a migration creating the private 'images' Supabase Storage bucket plus storage.objects RLS policies (select/insert/update/delete) scoped to each user's auth.uid() folder prefix. Idempotent via existence checks.",
-    "2": "Implemented shared DB row types, browser/server/service Supabase clients (@supabase/ssr), the isAllowed() allowlist+owner-override check, the /api/auth/gate OAuth callback (exchange code, check allowlist, upsert profile, redirect), and middleware.ts session refresh with login/home redirects. Middleware matcher excludes /api/auth/gate, /api/health, /denied, and static assets.",
-    "3": "Built the Google sign-in page + neutral denied page (CSS Modules), replaced the create-next-app home page with an authed server-component placeholder, added the Bearer-protected /api/health cron warm-ping route, vercel.json's daily cron entry, and rewrote .env.local.example to the real key contract."
+    "1": "image_blobs v2 additive Dexie store (id, createdAt) + ImageBlobRow type; SyncOutboxRow.op gains 'upload'; SyncTable union gains 'images'. Harvested from the timed-out agent's edits, verified lint+build.",
+    "2": "Pure geometry (fitLongestEdge/planStepDown/thumbDims/decodeTarget), HEIC magic-byte isHeic + lazy heic2any transcode, processBitmap (EXIF-baked decode, decode cap, stepped-halving, JPEG q0.8 / PNG encode), and a Web Worker (Turbopack new Worker(new URL)) with main-thread fallback in host.processImage.",
+    "3": "ingestImage: in-flight dedupe (by File) -> processImage -> mint id -> atomic write of image_blobs + images row + outbox 'upload' marker; fail-closed on ImagePipelineError. evictOriginals: 72h + durability interlock (any pending/quarantined outbox row keeps the original). storage-paths.ts pure mainPath/thumbPath.",
+    "4": "flushImages runs before the LWW tables: load image_blobs (missing/no-main -> quarantine), upload main+thumb (upsert:true) then upsert the images row on id, clearDirty. Network error throws PushNetworkError (backoff); other errors quarantine that one image. Also relaxed image_blobs.main to Blob|null for pull-only devices.",
+    "5": "getThumbUrl/getThumbUrls: local-blob-first object URLs, signed-URL fallback (in-memory 24h cache, batch createSignedUrls) + fire-and-forget lazy backfill into image_blobs, handle {url, release()} with exactly-once revoke + LRU cap on live object URLs.",
+    "6": "/dev/image-pipeline harness (server guard 404s only on VERCEL_ENV=production, client island for pick->ingest->status->thumb + evict/clear-blobs buttons); evictOriginals wired into engine startSyncLoop + after each successful flush; extended mock Supabase with storage.upload/createSignedUrl(s)+getSession; 52 vitest tests green (geometry, HEIC, paths, upload happy/poison/network, eviction interlock, display cache/handle/LRU, in-flight dedupe, fail-closed; no M2 regression)."
   }
 }
