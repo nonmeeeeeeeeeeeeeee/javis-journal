@@ -64,10 +64,18 @@ export async function proxy(request: NextRequest) {
     },
   );
 
+  const pathname = request.nextUrl.pathname;
+
+  // `/preview` is a dev-only design-tuning page (see src/app/preview/page.tsx).
+  // Let it bypass the auth gate in development so it can be viewed locally; it
+  // stays gated (and unreachable) in production builds.
+  if (process.env.NODE_ENV !== "production" && pathname === "/preview") {
+    return supabaseResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const pathname = request.nextUrl.pathname;
 
   if (!user && pathname !== "/login") {
     return applyAuthCookies(
