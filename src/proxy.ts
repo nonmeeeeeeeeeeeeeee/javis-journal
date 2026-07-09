@@ -66,11 +66,14 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // `/preview` (and its sub-routes like /preview/responsive) are dev-only
-  // design-tuning pages. Let them bypass the auth gate in development so they
-  // can be viewed locally; they stay gated (and unreachable) in production.
+  // `/preview` (and its sub-routes like /preview/responsive, /preview/interactive)
+  // are dev-only design-tuning pages with no user data. Let them bypass the auth
+  // gate everywhere EXCEPT the real production site, so the owner can review the
+  // design locally and on Vercel preview (branch) deployments from a phone. The
+  // production site (VERCEL_ENV === "production") keeps them gated.
+  const isProductionSite = process.env.VERCEL_ENV === "production";
   if (
-    process.env.NODE_ENV !== "production" &&
+    !isProductionSite &&
     (pathname === "/preview" || pathname.startsWith("/preview/"))
   ) {
     return supabaseResponse;
