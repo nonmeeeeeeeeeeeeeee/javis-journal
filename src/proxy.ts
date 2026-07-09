@@ -66,10 +66,13 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // `/preview` is a dev-only design-tuning page (see src/app/preview/page.tsx).
-  // Let it bypass the auth gate in development so it can be viewed locally; it
-  // stays gated (and unreachable) in production builds.
-  if (process.env.NODE_ENV !== "production" && pathname === "/preview") {
+  // `/preview` (and its sub-routes like /preview/responsive) are dev-only
+  // design-tuning pages. Let them bypass the auth gate in development so they
+  // can be viewed locally; they stay gated (and unreachable) in production.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (pathname === "/preview" || pathname.startsWith("/preview/"))
+  ) {
     return supabaseResponse;
   }
 
