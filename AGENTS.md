@@ -26,7 +26,12 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       clients, allowlist gate, session proxy, login/denied pages, health cron all done and
       committed. **One manual step left:** repairing the Google OAuth redirect URI in the
       Google/Supabase console.
-- [ ] M2 — Local-first + sync (US-11, sync half of US-13)
+- [x] **M2 — Local-first + sync** (US-11, sync half of US-13) — Dexie schema (6 entity
+      tables + `sync_outbox`/`sync_meta`), debounced push (ALG-3) with poison-pill
+      quarantine, delta-pull LWW-merge (ALG-4) with tombstones, exponential backoff, and
+      `SyncBoot` wired live into the root layout. Verified by 8 vitest + fake-indexeddb
+      integration tests. Built via `/parallel-plan` (M2-PLAN.md); resolved plan in
+      `Wiki Javi's Journal/plans/M2-PLAN.md`.
 - [ ] M3 — Image pipeline (compression half of US-13)
 - [ ] M4 — Calendar views (US-2, US-3, US-4, US-5)
 - [ ] M5 — Stamper / cutter (US-6)
