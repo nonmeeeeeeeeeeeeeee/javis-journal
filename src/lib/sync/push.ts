@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
-import type { Entry, PlacedSticker, Profile, Stamp } from "@/lib/db/types";
+import type { ImageBlobRow } from "@/lib/db/image-types";
+import type { Entry, ImageRow, PlacedSticker, Profile, Stamp } from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/browser";
+import { mainPath, thumbPath } from "@/lib/image/storage-paths";
 import {
   clearDirty,
   getPending,
@@ -62,6 +64,12 @@ export async function flush(): Promise<FlushResult> {
 
   let pushed = 0;
   let quarantined = 0;
+
+  // Images branch runs BEFORE the LWW tables (decision 9): a stamps.image_id FK can
+  // only resolve on the server after the image row + blobs have landed.
+  const imageResult = await flushImages(supabase, user.id);
+  pushed += imageResult.pushed;
+  quarantined += imageResult.quarantined;
 
   for (const table of LWW_TABLES) {
     const pending = await getPending(table);
@@ -132,6 +140,111 @@ export async function flush(): Promise<FlushResult> {
   }
 
   return { ok: true, pushed, quarantined };
+}
+
+async function flushImages(
+  supabase: SupabaseClient,
+  uid: string,
+): Promise<{ pushed: number; quarantined: number }> {
+  const pending = await getPending("images");
+  let pushed = 0;
+  let quarantined = 0;
+
+  for (const outboxRow of pending) {
+    const id = outboxRow.rowId;
+    const [imageRow, blobRow] = await Promise.all([
+      db.images.get(id),
+      db.image_blobs.get(id),
+    ]);
+
+    // An 'upload' outbox row only exists on the ingesting device, where main+thumb
+    // are always present; a missing row/blob is a genuine poison pill.
+    if (!imageRow || !blobRow || !blobRow.main) {
+      await quarantine("images", id, "Local image row or blobs are missing.");
+      quarantined += 1;
+      continue;
+    }
+
+    try {
+      await uploadImage(supabase, uid, imageRow, blobRow.main, blobRow.thumb, blobRow.kind);
+      await clearDirty("images", id);
+      pushed += 1;
+    } catch (error) {
+      if (isNetworkError(error)) {
+        throw error;
+      }
+      await quarantine("images", id, error);
+      quarantined += 1;
+    }
+  }
+
+  return { pushed, quarantined };
+}
+
+// Every step is idempotent (deterministic paths + upsert-on-id), so a retry that
+// re-runs all steps after a partial failure is always safe.
+async function uploadImage(
+  supabase: SupabaseClient,
+  uid: string,
+  imageRow: ImageRow,
+  mainBlob: Blob,
+  thumbBlob: Blob,
+  kind: ImageBlobRow["kind"],
+): Promise<void> {
+  const main = mainPath(uid, imageRow.id, kind);
+  const thumb = thumbPath(uid, imageRow.id);
+
+  await uploadObject(supabase, main, mainBlob, imageRow.mime);
+  await uploadObject(supabase, thumb, thumbBlob, "image/jpeg");
+
+  const row: ImageRow = {
+    ...imageRow,
+    user_id: uid,
+    storage_path: main,
+    thumb_path: thumb,
+  };
+
+  let result;
+  try {
+    result = await supabase.from("images").upsert(row);
+  } catch (error) {
+    throw new PushNetworkError("Network failure while upserting images.", {
+      cause: error,
+    });
+  }
+
+  if (result.error) {
+    if (result.status === 0) {
+      throw new PushNetworkError("Network failure while upserting images.", {
+        cause: result.error,
+      });
+    }
+    throw result.error;
+  }
+}
+
+async function uploadObject(
+  supabase: SupabaseClient,
+  path: string,
+  blob: Blob,
+  contentType: string,
+): Promise<void> {
+  let result;
+  try {
+    result = await supabase.storage
+      .from("images")
+      .upload(path, blob, { upsert: true, contentType });
+  } catch (error) {
+    throw new PushNetworkError(`Network failure while uploading ${path}.`, {
+      cause: error,
+    });
+  }
+
+  if (result.error) {
+    // A returned StorageError is a real (non-network) failure -> quarantine this
+    // one image. Network failures throw from fetch and are caught above.
+    throw result.error;
+  }
 }
 
 async function getEntityRow(
