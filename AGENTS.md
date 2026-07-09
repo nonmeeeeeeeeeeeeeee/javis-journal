@@ -32,7 +32,17 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       `SyncBoot` wired live into the root layout. Verified by 8 vitest + fake-indexeddb
       integration tests. Built via `/parallel-plan` (M2-PLAN.md); resolved plan in
       `Wiki Javi's Journal/plans/M2-PLAN.md`.
-- [ ] M3 — Image pipeline (compression half of US-13)
+- [x] **M3 — Image pipeline (compression half of US-13)** — headless image layer:
+      ALG-1 `processImage` (EXIF-baked decode, ~40MP decode cap, stepped-halving downscale,
+      JPEG q0.8 / PNG) in a Web Worker with main-thread fallback; **HEIC transcode
+      (`heic2any`) runs on the main thread** (it needs the DOM, throws in a worker); new
+      `image_blobs` Dexie v2 store (original + main + thumb, sync-invisible) with 72h
+      original eviction behind an upload-durability interlock; the deferred `images` upload
+      path wired into `flush()` (runs before the LWW tables); a local-first thumb display
+      helper (signed-URL fallback + lazy backfill, LRU-capped object URLs). Verified by 52
+      vitest tests + a Tier-2 owner gate on a real Pixel 9 (upload → durable, HEIC upright).
+      Built directly on `ui-design` (the `/parallel-plan` worktree agents failed again — see
+      `.claude/dag-state.json`). Dev harness at `/dev/image-pipeline`.
 - [ ] M4 — Calendar views (US-2, US-3, US-4, US-5)
 - [ ] M5 — Stamper / cutter (US-6)
 - [ ] M6 — Day editor (US-7, US-8)

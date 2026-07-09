@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { db } from "@/lib/db";
-import { createClient } from "@/lib/supabase/browser";
 import { evictOriginals } from "@/lib/image/eviction";
 import { isHeic, readMagicBytes } from "@/lib/image/heic";
 import { ingestImage } from "@/lib/image/ingest";
@@ -62,7 +61,6 @@ export function ImagePipelineHarness() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string>("idle");
-  const [authInfo, setAuthInfo] = useState<string>("");
 
   const refresh = useCallback(async () => {
     const ids = await db.image_blobs.orderBy("createdAt").reverse().primaryKeys();
@@ -122,20 +120,6 @@ export function ImagePipelineHarness() {
     [refresh],
   );
 
-  const onAuthCheck = useCallback(async () => {
-    const supabase = createClient();
-    const { data: s } = await supabase.auth.getSession();
-    const token = s.session?.access_token ?? "";
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    setAuthInfo(
-      [
-        `getSession: ${s.session ? "session present" : "NO session"}`,
-        `token: ${token ? `${token.length} chars, JWT=${token.startsWith("eyJ")}` : "none"}`,
-        `getUser: ${u.user?.id ?? "none"}${uErr ? ` err=${uErr.message}` : ""}`,
-      ].join(" · "),
-    );
-  }, []);
-
   const onEvict = useCallback(async () => {
     const n = await evictOriginals();
     console.log(`[harness] evictOriginals dropped ${n} original(s)`);
@@ -167,17 +151,10 @@ export function ImagePipelineHarness() {
         <button onClick={() => void onEvict()} disabled={busy}>
           Force evictOriginals()
         </button>
-        <button onClick={() => void onAuthCheck()} disabled={busy}>
-          Auth check
-        </button>
         <span style={{ fontSize: 13, color: "#666" }}>
           sync: <b>{syncStatus}</b>
         </span>
       </div>
-
-      {authInfo && (
-        <p style={{ fontFamily: "monospace", fontSize: 12, color: "#444" }}>{authInfo}</p>
-      )}
 
       {busy && <p>Processing…</p>}
       {error && <p style={{ color: "crimson" }}>{error}</p>}
