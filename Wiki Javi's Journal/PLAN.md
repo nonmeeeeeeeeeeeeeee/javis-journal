@@ -118,6 +118,7 @@ As Javi, I want a whole-month view that looks right on phone and desktop, so tha
 - Given the close-up view (phone), when she zooms out, then the full month grid appears with a fixed margin to the window sides.
 - Given a desktop / large screen, when the app opens, then the full-month view is the default and the layout never breaks outside phone sizes.
 - Given the full month, when it renders, then each day shows a progress thumbnail and a Today shortcut is available.
+  - **M4 deviation:** the explicit **Today shortcut button was dropped as redundant.** "Back to now" is met instead by opening on the current month, the close-up centering on today, the today marker, and the month picker highlighting/returning to the current month. (Resolved in `plans/M4-PLAN.md`.)
 
 ### US-4 — Configurable week start, opens on current month
 As Javi, I want a Monday start and the app to open on the real current month, so that it matches how I think and today.
@@ -217,7 +218,7 @@ Grounded in the annotated Excalidraw mockup at
 
 - **Login (Google)** — must show: a Google sign-in button; denies non-allowlisted emails; owner-override recovery path. Primary action: sign in.
 - **Month close-up (home)** — must show: the current month (whole month pre-rendered), day numbers, per-day stamp thumbnails, sticker button, 3-dots menu. The **fixed edge margin** = the leftmost/rightmost day-square edge is clamped to a fixed distance from the window edge. Primary actions: free-scroll L/R (clamped), tap a day, zoom-out, long-press the month name to change month. Mockup: `Untitled-2026-07-04-2338`.
-- **Full-month view** — must show: the whole month grid (Monday-start) with a fixed margin to the window sides, month + year title, all day numbers, progress thumbnails, applied Pokémon frame, global stickers, Today shortcut. **On desktop this is the default view**; responsive so it never breaks at desktop sizes. Primary actions: tap a day, zoom-in, long-press month name.
+- **Full-month view** — must show: the whole month grid (week-start aware) with a fixed margin to the window sides, month + year title, all day numbers, progress thumbnails, applied Pokémon frame, global stickers, ~~Today shortcut~~ (dropped in M4 — see US-3). **On desktop this is the default view**; responsive so it never breaks at desktop sizes. Primary actions: tap a day, zoom-in, long-press month name.
 - **3-dots menu** — must show: Download PNG, Logout, Toggle full-month view, Change month, Change frame. Primary action: each item (change month is also reachable by long-pressing the month name).
 - **Sticker picker** — must show: reusable tray (3–5 seeded + uploaded), upload button. Primary actions: pick a sticker → add to the global calendar layer; upload a new sticker; delete non-seeded stickers.
 - **Stamper (cutter) machine** — must show: a skeuomorphic stamp-machine, the photo inside the mask window, ‹ › chevrons to cycle shape, ≥3 cut styles (cloud, spiky, heart) plus the postage frame, pan/zoom/resize/rotate-45 controls, and a confirm/stamp action with a cozy cut animation + sound (US-14). Primary actions: change mask, fit, cut.

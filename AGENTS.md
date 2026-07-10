@@ -43,7 +43,19 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       vitest tests + a Tier-2 owner gate on a real Pixel 9 (upload → durable, HEIC upright).
       Built directly on `ui-design` (the `/parallel-plan` worktree agents failed again — see
       `.claude/dag-state.json`). Dev harness at `/dev/image-pipeline`.
-- [ ] M4 — Calendar views (US-2, US-3, US-4, US-5)
+- [x] **M4 — Calendar views** (US-2, US-3, US-4, US-5) — the real data-backed calendar home:
+      a single client island at `/` (view + current month are React state, never the URL) with
+      a **`MonthCloseUp`** (column-major free-scroll, opens centered on today, US-2 clamp) and a
+      **`MonthFull`** (7×6 fit-to-viewport) sharing one fit model + `DayCell`; **pinch-to-switch**
+      (touch) + a 3-dots "Toggle full-month view" (all devices); a **read seam**
+      `src/lib/db/queries.ts` (`dexie-react-hooks`; components never call `db.*`) with a batched
+      one-`getThumbUrls`-per-month load and **release-on-unmount** object-URL discipline (ALG-6,
+      single mounted month — the ±1-carousel wording is superseded); ALG-5 `monthGrid` +
+      week-start Mon/Sun (persisted via `markDirty`); a `[2026-07, current]`-bounded month picker;
+      logout. New Dexie **v3** `entries.entry_date` index (⚠ renumber vs M5 at merge). **Dropped
+      the Today button** (documented deviation on US-3). Verified by 79 vitest tests incl. an
+      object-URL canary; dev harness at `/dev/calendar`. Tier-2 (real-device) is an owner gate.
+      Built directly on `m4-calendar` off `ui-design` (no `/parallel-plan`).
 - [ ] M5 — Stamper / cutter (US-6)
 - [ ] M6 — Day editor (US-7, US-8)
 - [ ] M7 — Stickers + tray (US-9)
@@ -76,10 +88,17 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
 - `src/app/` — routes (App Router). API routes: `api/auth/gate` (allowlist sign-in gate),
   `api/health` (cron warm-ping).
 - `src/components/` — UI screens (calendar close-up, full-month, day page, stamper, sticker
-  picker, 3-dots menu).
-- `src/lib/db/` — Dexie schema + local-first store.
+  picker, 3-dots menu). `src/components/calendar/` — the M4 calendar island (`Calendar`,
+  `MonthCloseUp`, `MonthFull`, `DayCell`, `MonthTitle`, `WeekdayHeader`, `TopBar`,
+  `CalendarMenu`, `MonthPicker`).
+- `src/lib/db/` — Dexie schema + local-first store. **Reads go through `queries.ts`**
+  (`useMonthData`/`useProfile`, the sole component read seam); week-start **writes go through
+  `mutations.ts`** (`markDirty`). Components never call `db.*` directly.
+- `src/lib/calendar/` — pure calendar geometry: `month-grid.ts` (ALG-5, today/bounds/date
+  helpers) + `fit.ts` (shared 7:6 cell-fit model). No React, no Dexie.
 - `src/lib/sync/` — debounced sync engine (ALG-3/ALG-4, LWW + tombstones).
-- `src/lib/image/` — image pipeline + stamp cutter (ALG-1/ALG-2).
+- `src/lib/image/` — image pipeline + stamp cutter (ALG-1/ALG-2). `thumb-url.ts` is the sole
+  image-read seam (`getThumbUrls`, ALG-6 object-URL release).
 - `src/lib/supabase/` — browser + server Supabase clients (`@supabase/ssr`).
 - `src/lib/auth/` — allowlist gate helpers + owner-override.
 - `src/proxy.ts` — session-refresh + login/home redirect proxy (this Next.js version

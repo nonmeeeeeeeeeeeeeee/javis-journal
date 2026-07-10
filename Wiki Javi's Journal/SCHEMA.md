@@ -270,6 +270,12 @@ PNG export.
 - `sticker_assets(user_id)` — load the reusable tray (US-9).
 - `images(user_id)` — per-user image lookups.
 
+**Local (Dexie/IndexedDB) indexes** mirror only what the client range-scans:
+- `entries(entry_date)` — added by the **M4 Dexie v3 migration** (`entries: "id, entry_date"`)
+  so the calendar reads a month as `entries.where('entry_date').between(start, end)` without a
+  full-table scan (US-2, US-3). The server-side uniqueness lives in the Postgres
+  `entries(user_id, entry_date)` UNIQUE above; the local index is a non-unique secondary index.
+
 ## DDL
 
 ```sql

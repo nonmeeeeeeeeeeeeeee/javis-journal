@@ -147,9 +147,11 @@ sequenceDiagram
 ```
 
 **FLOW-7 — Zoom close-up ↔ full-month (US-2, US-3)** — pure client view-state, no fetch:
-pinch-out → smooth scale to the full-month grid (Monday-start, ALG-5, fixed side margin);
-pinch-in / tap → back to close-up or into a day. Desktop defaults to full-month. Mounts
-current ±1 month only (ALG-6).
+pinch-out → smooth scale to the full-month grid (start-of-week aware, ALG-5, fixed side
+margin); pinch-in → back to close-up. The default view is chosen by pointer type
+(`(pointer: coarse)` → close-up, else full-month); a 3-dots "Toggle full-month view" item is
+the all-device switch. Exactly one month is mounted at a time (month navigation is fully
+discrete — ALG-6). *(M4: implemented; the "into a day" tap-navigation is M6.)*
 
 **FLOW-8 — Change calendar frame (US-10)**
 
@@ -165,9 +167,11 @@ sequenceDiagram
 ```
 
 **FLOW-9 — Month render from thumbnails (US-2, US-3, US-13)** — load entries for the visible
-month range, mount current ±1 month only (ALG-6); each day renders a 256px thumb (object URL
-from IndexedDB or signed Storage URL), never full-res; off-screen cells unmount and revoke
-object URLs so memory stays flat (fixes the ~20-day freeze).
+month range (Dexie `entry_date` range scan), mount exactly one month at a time — month
+navigation is fully discrete, so there is no adjacent-month carousel (ALG-6); each day renders
+a 256px thumb (object URL from IndexedDB or signed Storage URL), never full-res; every thumb
+object URL is released when the month unmounts (or its stamp set changes) so memory stays flat
+(fixes the ~20-day freeze).
 
 **FLOW-10 — Download PNG (US-12)** — compose the month offscreen at 2× (9-slice frame + grid
 + thumbs + global stickers, ALG-7), chunked via `requestIdleCallback` so the editor never
@@ -316,15 +320,15 @@ Notes:
 ### ALG-6 — History virtualization + memory lifecycle
 - **Purpose / trigger:** always, while browsing — the direct fix for the ~20-day freeze.
 - **Runs on:** client.
-- **Inputs → outputs:** the visible month → mounted cells with 256px thumbnails; off-screen cells released.
-- **Approach:** mount only the current ±1 month; render 256px thumbnails only (object URL from IndexedDB or signed Storage URL); revoke object URLs on unmount; decode full-res originals only inside the stamper, then close the bitmap; LRU-cap decoded thumbs; never keep every day's canvas mounted.
+- **Inputs → outputs:** the visible month → mounted cells with 256px thumbnails; the outgoing month's thumb object URLs released.
+- **Approach (M4 realized):** mount **exactly one month at a time** — month navigation is fully discrete (long-press title / 3-dots → Change month; no swipe into an adjacent month), so the original "current ±1 month carousel" wording is superseded. Render 256px thumbnails only (object URL from IndexedDB or signed Storage URL); a whole month's thumbs are batch-resolved in one `getThumbUrls` round-trip and **every handle is released on month unmount / stamp-set change** — the deterministic release, not the LRU cap, is the mechanism (the LRU cap is only a backstop). Decode full-res originals only inside the stamper, then close the bitmap; never keep every day's canvas mounted. The `/dev/calendar` harness's object-URL canary guards that the live-URL count stays flat across many month navigations.
 - **Pseudocode:**
   ```
-  renderMonth(m):
-    for day in m.visibleDays:            # current ±1 month mounted
-      src = cache.get(day.imageId) ?? URL.createObjectURL(idb.thumbBlob(day.imageId))
-      <img src=src loading="lazy">       # 256px only, never full-res
-  onUnmount(cell): URL.revokeObjectURL(cell.objURL)   # release memory
+  renderMonth(m):                        # exactly one month mounted (discrete nav)
+    handles = getThumbUrls(m.imageIds)   # one batched round-trip
+    for day in m.days:
+      <img src=handles[day.imageId].url loading="lazy">   # 256px only, never full-res
+  onMonthUnmount(m): for h in handles: h.release()        # release every object URL
   ```
 - **Complexity / performance:** memory stays ~flat regardless of history length — the hard gate is the simulated 30–60 day long-run test.
 - **Edge cases:** fast scrolling (LRU + lazy decode); missing thumb (fall back to signed Storage URL).
