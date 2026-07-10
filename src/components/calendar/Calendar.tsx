@@ -10,8 +10,11 @@ import {
   type YearMonth,
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
+import { setStartOfWeek } from "@/lib/db/mutations";
+import { CalendarMenu } from "./CalendarMenu";
 import { MonthCloseUp } from "./MonthCloseUp";
 import { MonthFull } from "./MonthFull";
+import { MonthPicker } from "./MonthPicker";
 import { MonthTitle } from "./MonthTitle";
 import { TopBar } from "./TopBar";
 import type { MonthViewProps } from "./MonthView";
@@ -44,9 +47,11 @@ function prefersReducedMotion(): boolean {
  */
 export function Calendar() {
   const [view, setView] = useState<CalendarView>("full-month");
-  // The month-navigation setter is added in T6 (menu + picker); T5 opens on the
-  // current month and never changes it.
-  const [{ year, month }] = useState<YearMonth>(() => currentYearMonth());
+  const [{ year, month }, setYearMonth] = useState<YearMonth>(() =>
+    currentYearMonth(),
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [metrics, setMetrics] = useState<FitMetrics>({
     availW: 0,
     availH: 0,
@@ -158,6 +163,9 @@ export function Calendar() {
     };
   }, []);
 
+  const toggleView = () =>
+    setView((v) => (v === "full-month" ? "close-up" : "full-month"));
+
   const viewProps: MonthViewProps = {
     year,
     month,
@@ -173,7 +181,7 @@ export function Calendar() {
       ref={mainRef}
       className="relative h-svh w-screen overflow-hidden bg-page [touch-action:none]"
     >
-      <TopBar />
+      <TopBar onMenu={() => setMenuOpen(true)} />
 
       <div
         ref={containerRef}
@@ -181,7 +189,11 @@ export function Calendar() {
         style={{ gap: TITLE_GRID_GAP }}
       >
         <div ref={titleRef}>
-          <MonthTitle year={year} month={month} />
+          <MonthTitle
+            year={year}
+            month={month}
+            onLongPress={() => setPickerOpen(true)}
+          />
         </div>
 
         {/* Keyed so a view switch replays the scale+fade on a fresh node. */}
@@ -193,6 +205,23 @@ export function Calendar() {
           )}
         </div>
       </div>
+
+      <CalendarMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onToggleView={toggleView}
+        onChangeMonth={() => setPickerOpen(true)}
+        startOfWeek={profile.startOfWeek}
+        onSetWeekStart={(value) => void setStartOfWeek(value)}
+      />
+
+      {pickerOpen ? (
+        <MonthPicker
+          onClose={() => setPickerOpen(false)}
+          viewed={{ year, month }}
+          onPick={(ym) => setYearMonth(ym)}
+        />
+      ) : null}
     </main>
   );
 }
