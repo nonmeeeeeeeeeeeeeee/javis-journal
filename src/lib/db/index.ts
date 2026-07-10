@@ -41,6 +41,14 @@ export class JournalDB extends Dexie {
     this.version(2).stores({
       image_blobs: "id, createdAt",
     });
+
+    // v3 (M4): additive entry_date index on entries so the calendar can range-scan
+    // a month (entries.where('entry_date').between(...)). Index only, no data change.
+    // ⚠ Coordinate this version number with M5 at merge — one milestone takes v3,
+    // the other v4; the migrations are additive and independent.
+    this.version(3).stores({
+      entries: "id, entry_date",
+    });
   }
 }
 
