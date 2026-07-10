@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import type { ImageBlobRow } from "@/lib/db/image-types";
 import type { Entry, ImageRow, PlacedSticker, Profile, Stamp } from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/browser";
-import { mainPath, thumbPath } from "@/lib/image/storage-paths";
+import { mainPath, stampMainPath, stampThumbPath, thumbPath } from "@/lib/image/storage-paths";
 import {
   clearDirty,
   getPending,
@@ -159,7 +159,7 @@ async function flushImages(
 
     // An 'upload' outbox row only exists on the ingesting device, where main+thumb
     // are always present; a missing row/blob is a genuine poison pill.
-    if (!imageRow || !blobRow || !blobRow.main) {
+    if (!imageRow || !blobRow || !blobRow.main || !blobRow.thumb) {
       await quarantine("images", id, "Local image row or blobs are missing.");
       quarantined += 1;
       continue;
@@ -191,11 +191,23 @@ async function uploadImage(
   thumbBlob: Blob,
   kind: ImageBlobRow["kind"],
 ): Promise<void> {
-  const main = mainPath(uid, imageRow.id, kind);
-  const thumb = thumbPath(uid, imageRow.id);
+  // A baked stamp (ADR-M5) uploads WebP/PNG-alpha for BOTH closeup and thumb, so its thumb
+  // extension + content-type track the bake mime; photo/sticker thumbs stay JPEG.
+  let main: string;
+  let thumb: string;
+  let thumbType: string;
+  if (kind === "stamp") {
+    main = stampMainPath(uid, imageRow.id, imageRow.mime);
+    thumb = stampThumbPath(uid, imageRow.id, imageRow.mime);
+    thumbType = imageRow.mime;
+  } else {
+    main = mainPath(uid, imageRow.id, kind);
+    thumb = thumbPath(uid, imageRow.id);
+    thumbType = "image/jpeg";
+  }
 
   await uploadObject(supabase, main, mainBlob, imageRow.mime);
-  await uploadObject(supabase, thumb, thumbBlob, "image/jpeg");
+  await uploadObject(supabase, thumb, thumbBlob, thumbType);
 
   const row: ImageRow = {
     ...imageRow,

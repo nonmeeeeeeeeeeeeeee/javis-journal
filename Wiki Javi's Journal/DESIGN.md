@@ -77,11 +77,11 @@ sequenceDiagram
   participant IMG as Image+cutter
   participant ST as Storage
   participant PG as Postgres
-  UI->>IMG: pick image (HEIC decode if needed)
-  IMG->>IMG: ALG-1 compress ~2048px + 256 thumb (original → IndexedDB)
-  UI->>IMG: pan/zoom/rotate behind mask (ALG-2 live crop)
-  UI->>ST: Storage PUT compressed + thumb
-  UI->>PG: POST /images
+  UI->>IMG: pick image (HEIC decode if needed) — transient
+  UI->>IMG: pan/zoom/rotate-mode behind mask (ALG-2 live preview)
+  IMG->>IMG: Cut → bake masked WebP-alpha closeup + thumb (ALG-2)
+  UI->>ST: Storage PUT baked webp closeup + thumb
+  UI->>PG: POST /images (mime image/webp)
   UI->>UI: ALG-8 auto-place centered at max fit (day page)
   UI->>PG: upsert /entries + /stamps (debounced, ALG-3)
 ```
@@ -96,9 +96,9 @@ sequenceDiagram
   participant PG as Postgres
   UI->>UI: tap day → day canvas (close-up), adjacent days peeking
   UI->>UI: tap floating + FAB (bottom-right; hidden at 3 stamps)
-  UI->>IMG: pick image → ALG-1 compress → stamper cut (ALG-2)
-  UI->>ST: Storage PUT
-  UI->>PG: POST /images
+  UI->>IMG: pick image → stamper frame → Cut → bake WebP-alpha (ALG-2)
+  UI->>ST: Storage PUT baked webp closeup + thumb
+  UI->>PG: POST /images (mime image/webp)
   UI->>UI: place at ~60% max-fit, cascade-offset, layer_order = max+1
   UI->>PG: upsert /stamps (entry exists) — debounced (ALG-3)
 ```
@@ -236,29 +236,30 @@ Notes:
 - **Edge cases:** HEIC on non-Safari; portrait/landscape EXIF orientation; very large images on low-end phones (cap decode); transparent stickers must stay PNG.
 - **Libraries:** `heic2any` or `libheif-wasm`; `createImageBitmap` / `OffscreenCanvas`.
 
-### ALG-2 — Stamp cutter transform + canvas-mask export
-- **Purpose / trigger:** the signature feature — fit a photo behind a shape mask and cut a non-destructive stamp.
+### ALG-2 — Stamp cutter frame + destructive WebP-alpha bake  *(ADR-M5: reverses the earlier "store crop, render live" model)*
+- **Purpose / trigger:** the signature feature — frame a photo behind a shape mask and **bake** it to a stamp.
 - **Runs on:** client.
-- **Inputs → outputs:** source image + mask id + normalized crop `{offX, offY, scale}` → a masked stamp canvas; the crop is stored on the `stamps` row (never a baked cutout).
-- **Approach:** the **invariant** that kills the "shifted after cutting" bug — the crop lives in **normalized source-pixel space** as the single source of truth; both the live preview and the export derive from it. Export at a fixed `OUT` resolution (DPR-independent) and apply the mask via canvas `globalCompositeOperation='destination-in'` with an alpha-mask bitmap (not CSS `clip-path`, which is inconsistent on Safari/iOS for heart / scallop / postage edges); the postage frame is drawn `source-over` on top.
-- **Pseudocode:**
+- **Inputs → outputs:** source image (transient, EXIF-baked) + mask id + live transform `{offX, offY, scale, rotation}` → **two baked WebP-alpha blobs** (a ~2048px closeup + a 256px grid thumb) stored via the existing `images` row + private bucket. **No crop is stored; the raw photo is discarded on confirm.** The cutter returns only `onConfirm(image_id)`.
+- **Approach:** the **single render path** (`render.ts`) is used by *both* the live preview and the bake, so preview == bake by construction — this is what kills the "shifted after cutting" bug under destructive baking. The photo is drawn rotated/panned/zoomed behind an **upright** mask window, the mask alpha is applied via `globalCompositeOperation='destination-in'` (not CSS `clip-path`, inconsistent on Safari/iOS for heart / scallop / postage edges), then `mask.frame` (postage perforation) is drawn `source-over` on top. **Rotation is a mode** (Rotate button toggles drag→rotate); the mask outline stays upright while the photo tilts. A **rotation-aware coverage clamp** (ALG-2a below) guarantees no transparent corner ever bakes. Baked as `image/webp` q0.8 with an `image/png` fallback where `convertToBlob('image/webp')` is unsupported.
+- **Coverage clamp (ALG-2a, the no-blank-corner invariant):** the sampling rectangle (mask-aspect, rotated by `rotation` in source space) must stay fully inside the source image. Its axis-aligned bounding box is `W_s·|cos|+H_s·|sin|` × `W_s·|sin|+H_s·|cos|`; min-zoom is the smallest `scale` whose sampling rect's AABB still fits — a **function of rotation angle** (at 45° coverage shrinks ~√2). Entering/continuing rotate mode auto-bumps zoom to the angle's min-cover. Pan is clamped so the (rotated) sampling rect stays within the image bounds. Purely a live cut-time concern — no persistence, no sync.
+- **Pseudocode (the shared render path):**
   ```
-  renderStamp(img, mask, crop, OUT=512):     # crop.offX/offY/scale ∈ source
-    outH = OUT * mask.aspect
-    srcW = crop.scale*img.w;  srcH = srcW*(outH/OUT)
-    sx = crop.offX*img.w - srcW/2;  sy = crop.offY*img.h - srcH/2
-    ctx.drawImage(img, sx,sy,srcW,srcH, 0,0,OUT,outH)
-    ctx.globalCompositeOperation='destination-in'
-    ctx.drawImage(mask.alpha[id], 0,0,OUT,outH)          # cloud/heart/spiky/circle…
-    if mask.frame: ctx.gCO='source-over';
-                   ctx.drawImage(mask.frame,0,0,OUT,outH) # postage edge
-    return canvas    # OUT fixed ⇒ DPR-independent; preview derives FROM crop
-  # live pan:  s=winDisplayW/(crop.scale*img.w); crop.offX -= dx/s/img.w
-  # live zoom: crop.scale = clamp(crop.scale/f, minFit, 1)
+  renderFrame(ctx, img, mask, {offX,offY,scale,rotation}, size):  # size = {w,h}, w/h = mask.aspect
+    Ws0 = min(img.w, img.h*mask.aspect)          # reference sampling width (fit @ rot 0)
+    Ws  = Ws0 / scale;  Hs = Ws / mask.aspect     # sampling rect in source px
+    cx = img.w/2 + offX;  cy = img.h/2 + offY      # sampling-rect center (source px)
+    k  = size.w / Ws                               # source→canvas scale (uniform)
+    ctx.translate(size.w/2, size.h/2); ctx.scale(k,k)
+    ctx.rotate(-rotation); ctx.translate(-cx,-cy); ctx.drawImage(img,0,0)
+    ctx.globalCompositeOperation='destination-in'; ctx.fill(mask.path(size.w,size.h))
+    ctx.globalCompositeOperation='source-over'
+    if mask.frame: ctx.fill(mask.frame(size.w,size.h))     # postage perforation
+  bakeStamp(img, mask, transform):                 # render @ 2048 + @ 256, convertToBlob(webp,0.8)
+    → { closeupBlob, thumbBlob, width, height, mime }   # png fallback; throws ImagePipelineError
   ```
-- **Complexity / performance:** O(output pixels) per render; cheap enough for live preview.
-- **Edge cases:** image smaller than the mask window (clamp min scale); DPR change between preview and export (avoided by fixed `OUT`); re-fitting later loads the compressed cloud image (the cross-device source of truth), not the original.
-- **Libraries:** Canvas 2D / `OffscreenCanvas`; pre-rendered alpha-mask + frame bitmaps per shape.
+- **Complexity / performance:** O(output pixels) per render; cheap enough for live preview; the bake renders twice (closeup + thumb) once, on confirm.
+- **Edge cases:** image smaller than the mask window (min-cover clamp handles it); DPR is irrelevant (we bake fixed-resolution pixels, not a live transform); a decode/bake failure is **fail-closed** (throws `ImagePipelineError`, writes nothing). Because the stamp is baked, there is no "re-fit later" path — a fix is delete + re-cut from the photo (M6).
+- **Libraries:** Canvas 2D / `OffscreenCanvas`; masks are SVG-path→`Path2D` alphas (crisp at any bake size).
 
 ### ALG-3 — Optimistic autosave + debounced push
 - **Purpose / trigger:** every edit — "the app never makes her wait."

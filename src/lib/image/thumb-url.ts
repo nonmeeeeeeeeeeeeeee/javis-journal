@@ -3,6 +3,7 @@
 // Framework-agnostic; M4 wraps it in a React hook.
 
 import { db } from "@/lib/db";
+import type { ImageBlobRow } from "@/lib/db/image-types";
 import { createClient } from "@/lib/supabase/browser";
 
 export type ThumbHandle = {
@@ -17,7 +18,17 @@ const SIGNED_TTL_MS = 24 * 60 * 60 * 1000; // re-mint the cached signed URL afte
 const SIGNED_EXPIRES_SEC = 60 * 60 * 24; // request a 24h-valid signed URL
 let liveUrlCap = 120; // bound live object URLs even on a caller that never releases
 
+// Keyed by storage PATH (not image id): one image has two distinct objects — the closeup
+// (storage_path) and the thumb (thumb_path) — so keying by id would let getCloseupUrl and
+// getThumbUrl clobber each other's cached signed URL.
 const signedCache = new Map<string, { url: string; expiresAt: number }>();
+
+/** Backfill kind from the images.mime (webp -> baked stamp; png -> sticker; else photo). */
+function inferKind(mime: string | undefined): ImageBlobRow["kind"] {
+  if (mime === "image/webp") return "stamp";
+  if (mime === "image/png") return "sticker";
+  return "photo";
+}
 
 // Insertion-ordered registry of live object URLs for the LRU cap. Keyed by a
 // unique token so identical URLs (unlikely) never collide.
@@ -79,10 +90,31 @@ export async function getThumbUrl(id: string): Promise<ThumbHandle | null> {
   const imageRow = await db.images.get(id);
   if (!imageRow) return null;
 
-  const signed = await getSignedUrl(id, imageRow.thumb_path);
+  const signed = await getSignedUrl(imageRow.thumb_path);
   if (!signed) return null;
 
   void backfillThumb(id, signed);
+  return { url: signed, release: noop };
+}
+
+/**
+ * Resolve one 2048px closeup (day page — the baked stamp, or a photo's re-fit main).
+ * Mirrors getThumbUrl: local `main` blob first; else sign `storage_path`, backfill locally,
+ * cache 24h, return a released-on-revoke handle under the shared LRU cap.
+ */
+export async function getCloseupUrl(id: string): Promise<ThumbHandle | null> {
+  const local = await db.image_blobs.get(id);
+  if (local?.main) {
+    return objectUrlHandle(local.main);
+  }
+
+  const imageRow = await db.images.get(id);
+  if (!imageRow) return null;
+
+  const signed = await getSignedUrl(imageRow.storage_path);
+  if (!signed) return null;
+
+  void backfillCloseup(id, signed);
   return { url: signed, release: noop };
 }
 
@@ -120,8 +152,8 @@ export async function getThumbUrls(ids: string[]): Promise<Map<string, ThumbHand
   return out;
 }
 
-async function getSignedUrl(id: string, path: string): Promise<string | null> {
-  const cached = signedCache.get(id);
+async function getSignedUrl(path: string): Promise<string | null> {
+  const cached = signedCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
 
   const supabase = createClient();
@@ -130,7 +162,7 @@ async function getSignedUrl(id: string, path: string): Promise<string | null> {
     .createSignedUrl(path, SIGNED_EXPIRES_SEC);
   if (error || !data) return null;
 
-  signedCache.set(id, { url: data.signedUrl, expiresAt: Date.now() + SIGNED_TTL_MS });
+  signedCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + SIGNED_TTL_MS });
   return data.signedUrl;
 }
 
@@ -142,7 +174,7 @@ async function getSignedUrls(
 
   const uncached: { id: string; path: string }[] = [];
   for (const miss of misses) {
-    const cached = signedCache.get(miss.id);
+    const cached = signedCache.get(miss.path);
     if (cached && cached.expiresAt > now) {
       result.set(miss.id, cached.url);
     } else {
@@ -165,7 +197,7 @@ async function getSignedUrls(
   data.forEach((entry, i) => {
     const miss = uncached[i];
     if (!miss || entry.error || !entry.signedUrl) return;
-    signedCache.set(miss.id, { url: entry.signedUrl, expiresAt: now + SIGNED_TTL_MS });
+    signedCache.set(miss.path, { url: entry.signedUrl, expiresAt: now + SIGNED_TTL_MS });
     result.set(miss.id, entry.signedUrl);
   });
 
@@ -205,13 +237,46 @@ async function backfillThumb(id: string, signedUrl: string): Promise<void> {
     }
 
     const imageRow = await db.images.get(id);
-    const kind = imageRow?.mime === "image/png" ? "sticker" : "photo";
     await db.image_blobs.put({
       id,
       original: null,
       main: null,
       thumb,
-      kind,
+      kind: inferKind(imageRow?.mime),
+      createdAt: Date.now(),
+    });
+  } catch {
+    // best-effort backfill; the signed URL already satisfied this render
+  }
+}
+
+/**
+ * Download a signed closeup and store it locally as `main`. Best-effort. Mirrors
+ * backfillThumb; when there is no local blob row yet it creates one with `thumb: null`
+ * (the grid's getThumbUrl backfill fills the thumb later). Never clobbers an existing main.
+ */
+async function backfillCloseup(id: string, signedUrl: string): Promise<void> {
+  try {
+    const existing = await db.image_blobs.get(id);
+    if (existing?.main) return;
+
+    const res = await fetch(signedUrl);
+    if (!res.ok) return;
+    const main = await res.blob();
+
+    const fresh = await db.image_blobs.get(id);
+    if (fresh) {
+      if (!fresh.main) await db.image_blobs.update(id, { main });
+      return;
+    }
+
+    const imageRow = await db.images.get(id);
+    await db.image_blobs.put({
+      id,
+      original: null,
+      main,
+      thumb: null,
+      kind: inferKind(imageRow?.mime),
       createdAt: Date.now(),
     });
   } catch {
