@@ -10,6 +10,7 @@ vi.mock("@/lib/supabase/browser", () => ({ createClient: () => holder.client }))
 import {
   __resetThumbUrlCacheForTests,
   __setLiveUrlCapForTests,
+  getCloseupUrl,
   getThumbUrl,
   getThumbUrls,
 } from "./thumb-url";
@@ -144,4 +145,72 @@ test("getThumbUrls resolves local + remote misses in one batch", async () => {
   expect(map.get("local")?.url).toMatch(/^blob:mock\//);
   expect(map.get("remote")?.url).toContain("mock.storage");
   expect(ctl.getSignedUrlCallCount()).toBe(1); // single createSignedUrls round-trip
+});
+
+// ---- getCloseupUrl (M5 day-page closeup / baked stamp) ----
+
+function stampBlobRow(id: string) {
+  return {
+    id,
+    original: null,
+    main: new Blob(["closeup"], { type: "image/webp" }),
+    thumb: new Blob(["thumb"], { type: "image/webp" }),
+    kind: "stamp" as const,
+    createdAt: Date.now(),
+  };
+}
+
+function stampImageRow(id: string): ImageRow {
+  return {
+    id,
+    user_id: "mock-user-id",
+    storage_path: `mock-user-id/${id}.webp`,
+    thumb_path: `mock-user-id/${id}_thumb.webp`,
+    width: 1536,
+    height: 2048,
+    mime: "image/webp",
+    byte_size: 100,
+    created_at: "2026-07-10T00:00:00.000Z",
+  };
+}
+
+test("getCloseupUrl resolves the local main blob as an object URL without signing", async () => {
+  await db.image_blobs.put(stampBlobRow("c1"));
+  const handle = await getCloseupUrl("c1");
+  expect(handle?.url).toMatch(/^blob:mock\//);
+  expect(ctl.getSignedUrlCallCount()).toBe(0);
+});
+
+test("getCloseupUrl falls back to a signed storage_path and backfills main locally", async () => {
+  await db.images.put(stampImageRow("c2"));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: true, blob: async () => new Blob(["dl"], { type: "image/webp" }) })),
+  );
+
+  const handle = await getCloseupUrl("c2");
+  expect(handle?.url).toContain("mock.storage");
+  expect(handle?.url).toContain("c2.webp"); // the CLOSEUP object, not the thumb
+
+  await vi.waitFor(async () => {
+    const blob = await db.image_blobs.get("c2");
+    expect(blob?.main).toBeInstanceOf(Blob);
+    expect(blob?.thumb).toBeNull(); // grid thumb backfills separately
+  });
+});
+
+test("closeup and thumb signed URLs do not collide on the same id (cache keyed by path)", async () => {
+  await db.images.put(stampImageRow("c3"));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false }))); // keep both remote
+
+  const thumb = await getThumbUrl("c3");
+  const closeup = await getCloseupUrl("c3");
+  expect(thumb?.url).toContain("c3_thumb.webp");
+  expect(closeup?.url).toContain("c3.webp");
+  expect(closeup?.url).not.toBe(thumb?.url);
+  expect(ctl.getSignedUrlCallCount()).toBe(2); // two distinct objects → two signs
+});
+
+test("getCloseupUrl returns null for an unknown image", async () => {
+  expect(await getCloseupUrl("nope")).toBeNull();
 });
