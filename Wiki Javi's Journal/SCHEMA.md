@@ -140,7 +140,7 @@ intentionally not referenced here.
 | thumb_path | text | NOT NULL | Path to the 256px thumbnail (month view). |
 | width | int |  | Compressed image width (layout/aspect). |
 | height | int |  | Compressed image height. |
-| mime | text | NOT NULL, default `'image/jpeg'` |  |
+| mime | text | NOT NULL, default `'image/jpeg'` | `'image/jpeg'` (photo), `'image/png'` (sticker), or **`'image/webp'`** / `'image/png'` (M5 baked stamp; ADR-M5). |
 | byte_size | int |  | Compressed byte size (free-tier accounting). |
 | created_at | timestamptz | NOT NULL, default `now()` |  |
 
@@ -161,20 +161,24 @@ stamp), not stored.
 ### stamps
 Supports: US-6, US-7, US-8, US-11, US-13
 
-Up to 3 photo-stamps placed on a day. Non-destructive cutter: stores the compressed image
-ref + the crop transform (pan/zoom behind the mask) + the mask type, so any stamp can be
-re-fit later at full quality — never a baked cutout.
+Up to 3 photo-stamps placed on a day. **Destructive (baked) cutter (ADR-M5):** the cut,
+framed + masked photo is **baked to WebP-alpha pixels** and stored as its own `images` row;
+a stamp references that baked image and carries only **placement** (`pos/scale/rotation_deg/
+layer_order`). The crop columns below are **vestigial** under the baked model and are
+scheduled for a drop in **M6** (the first writer of `stamps`); they are harmless until then,
+so **no migration is on M5's path**. `mask_type` is baked into the pixels and demoted to
+**optional descriptive metadata** (no longer drives rendering).
 
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | uuid | PK, default `gen_random_uuid()` |  |
 | entry_id | uuid | NOT NULL, FK → entries(id) ON DELETE CASCADE | The day this stamp lives on. |
 | user_id | uuid | NOT NULL, FK → auth.users(id) ON DELETE CASCADE | Denormalized owner (RLS + sync). |
-| image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | Source compressed image. |
-| mask_type | text | NOT NULL, default `'postage'`, CHECK in (`'postage'`,`'cloud'`,`'spiky'`,`'heart'`,`'circle'`,`'square'`,`'oval'`) | Cutter shape. |
-| crop_offset_x | real | NOT NULL, default `0` | Pan X of the photo behind the mask window. |
-| crop_offset_y | real | NOT NULL, default `0` | Pan Y behind the mask. |
-| crop_scale | real | NOT NULL, default `1`, CHECK `> 0` | Zoom of the photo behind the mask. |
+| image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | The **baked** WebP-alpha stamp image (ADR-M5), not a raw source. |
+| mask_type | text | NOT NULL, default `'postage'`, CHECK in (`'postage'`,`'cloud'`,`'spiky'`,`'heart'`,`'circle'`,`'square'`,`'oval'`) | **Vestigial / optional metadata** — the mask is baked into the pixels; kept only to describe which shape was used. |
+| crop_offset_x | real | NOT NULL, default `0` | **Vestigial** (baked model — drop in M6). Was: pan X behind the mask. |
+| crop_offset_y | real | NOT NULL, default `0` | **Vestigial** (baked model — drop in M6). Was: pan Y behind the mask. |
+| crop_scale | real | NOT NULL, default `1`, CHECK `> 0` | **Vestigial** (baked model — drop in M6). Was: zoom behind the mask. |
 | pos_x | real | NOT NULL, default `0.5` | Placement X on the day canvas (normalized). |
 | pos_y | real | NOT NULL, default `0.5` | Placement Y on the day canvas (normalized). |
 | scale | real | NOT NULL, default `1`, CHECK `> 0` | Placement size. |
@@ -240,8 +244,9 @@ PNG export.
   (they map to static `border-image` assets), so no lookup table is warranted.
 - **Original image intentionally absent from the DB.** The uncompressed original is
   client-only (IndexedDB); Postgres syncs only the compressed + thumbnail refs. This keeps
-  the Supabase free tier viable for years and is the source of truth for non-destructive
-  re-fitting across devices.
+  the Supabase free tier viable for years. For **photos** the compressed cloud image is the
+  cross-device source; for **stamps** the stored artifact is the baked WebP-alpha `images`
+  row (ADR-M5, destructive) — there is no re-fit path, the pixels are the source of truth.
 - **`updated_at` is client-authored.** For last-write-wins per element, the client sets
   `updated_at` on write; no database trigger overwrites it (an auto-`now()` trigger would
   fight the LWW reconciliation).
@@ -297,7 +302,7 @@ create table images (
   storage_path text not null unique,
   thumb_path   text not null,
   width int, height int,
-  mime         text not null default 'image/jpeg',
+  mime         text not null default 'image/jpeg',  -- also 'image/png' (sticker) and 'image/webp'|'image/png' (M5 baked stamp; ADR-M5)
   byte_size    int,
   created_at   timestamptz not null default now()
 );
@@ -317,11 +322,14 @@ create table stamps (
   entry_id      uuid not null references entries(id) on delete cascade,
   user_id       uuid not null references auth.users(id) on delete cascade,
   image_id      uuid not null references images(id) on delete restrict,
+  -- ADR-M5 destructive/baked cutter: image_id is the BAKED WebP-alpha stamp.
+  -- mask_type is optional metadata; crop_* are vestigial and scheduled to drop in M6
+  -- (M6 is the first writer of stamps; harmless until then — no migration on M5's path).
   mask_type     text not null default 'postage'
                   check (mask_type in ('postage','cloud','spiky','heart','circle','square','oval')),
-  crop_offset_x real not null default 0,
-  crop_offset_y real not null default 0,
-  crop_scale    real not null default 1 check (crop_scale > 0),
+  crop_offset_x real not null default 0,   -- vestigial (baked); drop in M6
+  crop_offset_y real not null default 0,   -- vestigial (baked); drop in M6
+  crop_scale    real not null default 1 check (crop_scale > 0),  -- vestigial (baked); drop in M6
   pos_x         real not null default 0.5,
   pos_y         real not null default 0.5,
   scale         real not null default 1 check (scale > 0),

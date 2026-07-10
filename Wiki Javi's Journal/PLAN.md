@@ -19,9 +19,11 @@ simple, reliable rest.
 A **local-first** web app. Every edit renders instantly from **IndexedDB** and a
 **debounced sync engine** reconciles to **Supabase** in the background with
 **last-write-wins per element**. Only compressed images (~2048px) + 256px thumbnails go
-to the cloud; the true uncompressed original stays **client-side only**. The compressed
-cloud image is the cross-device source of truth for non-destructive stamp re-fitting.
-The cutter uses **canvas-based clipping** for final export (not CSS `clip-path`) for
+to the cloud; the true uncompressed original stays **client-side only**. For a photo the
+compressed cloud image is the cross-device source of truth; a **stamp**, however, is
+**baked destructively** at cut time (ADR-M5, below) — the cut framed+masked pixels are
+the stored artifact, so a stamp is never re-fit after cutting.
+The cutter uses **canvas-based clipping** for the bake (not CSS `clip-path`) for
 Safari/iOS consistency on cloud / spiky / heart / postage-edge masks.
 
 - **Client:** Next.js (App Router) + React + TypeScript, deployed on **Vercel**.
@@ -65,9 +67,18 @@ graph TD
   fastest path to a real URL in ~13 days.
 - **Local-first IndexedDB + debounced sync** — chose over a server round-trip per edit so
   edits render instantly on a phone; the core fix for "the app makes her wait."
-- **Non-destructive cutter** — store original image ref + crop transform + mask type, not
-  a baked cutout, so any stamp can be re-fit later. The compressed cloud image is the
-  cross-device source.
+- **Destructive (baked) cutter** *(ADR-M5, reverses the earlier non-destructive decision;
+  full rationale in `plans/M5-PLAN.md` Decision 0)* — on Cut, bake the framed + masked photo
+  to **WebP-alpha pixels** at two resolutions (~2048 closeup + 256 grid, PNG-alpha fallback)
+  and store **that** through the existing `images` table + private bucket; the raw photo is
+  transient (discarded on confirm) and **no crop transform is stored**. *Consequences:* a
+  stamp can never be re-framed / re-cropped / re-masked after cutting (fix = delete + redo
+  from the photo) — the behavior the owner asked for ("no changes to the stamp image after
+  it's created"); in exchange the app's #1 risk (preview==export drift across zoom/pan/DPR)
+  largely evaporates (bake once, keep the pixels), the `stamps` schema loses its crop columns,
+  and display is a plain bitmap draw with no live compositing. Storage is comparable-or-
+  smaller than non-destructive (only the visible cut is stored, as lossy WebP-alpha, with no
+  separate source blob). The stamp's stored artifact is its baked `images` row.
 - **Compressed-only to cloud** — only the ~2048px image + 256px thumbnail are uploaded;
   the true original stays client-side (IndexedDB). Keeps the free tier alive for years
   (~6 years at 1 photo/day; ~2 years at 3/day).
@@ -141,7 +152,7 @@ As Javi, I want to fit a photo inside a stamp shape in a little stamp machine, s
 **Acceptance criteria:**
 - Given a picked photo, when the stamper opens, then it previews inside the mask window with ‹ › controls to cycle shapes.
 - Given the preview, when she pans / zooms / resizes / rotates (45°), then the photo re-fits behind the mask live.
-- Given a cut, when confirmed, then the output matches the preview across zoom / pan / DPR and is stored non-destructively.
+- Given a cut, when confirmed, then the baked stamp matches the live preview exactly (same single render path) and is stored as baked WebP-alpha pixels (ADR-M5, destructive).
 - Given the shape picker, when she cycles it, then at least 3 cut styles are available — a cloud-like scalloped edge, a spiky zig-zag edge, and a heart — alongside the classic postage-stamp frame.
 
 ### US-7 — Add and auto-place first photo
@@ -269,8 +280,8 @@ graph TD
 - **M3 — Image pipeline:** the compression half of US-13; feeds US-6/US-7/US-9.
 - **M4 — Calendar views:** US-2, US-3, US-4, US-5. Month close-up, full-month, week-start,
   change-month, Today.
-- **M5 — Stamper / cutter:** US-6. Mask machine, cut styles, fit transforms, non-destructive
-  storage, canvas export.
+- **M5 — Stamper / cutter:** US-6. Mask machine, cut styles, fit transforms + rotate mode,
+  destructive **baked** WebP-alpha export (ADR-M5).
 - **M6 — Day editor:** US-7, US-8. Place / select / move / resize / rotate-45 / delete,
   undo toast, front-back, +add, 3-stamp cap.
 - **M7 — Stickers + tray:** US-9. Global calendar sticker layer, upload, seeded assets.
