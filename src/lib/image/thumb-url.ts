@@ -26,6 +26,15 @@ let tokenSeq = 0;
 
 function noop(): void {}
 
+/**
+ * Live object-URL count — the ALG-6 object-URL canary. In steady state this must
+ * stay flat across month navigations (release-on-unmount brings each month's handles
+ * back to baseline). Used by the /dev/calendar harness readout and the canary test.
+ */
+export function getLiveThumbUrlCount(): number {
+  return liveObjectUrls.size;
+}
+
 function objectUrlHandle(blob: Blob): ThumbHandle {
   const url = URL.createObjectURL(blob);
   const token = `t${++tokenSeq}`;
