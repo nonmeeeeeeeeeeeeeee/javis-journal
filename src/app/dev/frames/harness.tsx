@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+import { FramedGrid } from "@/components/calendar/FramedGrid";
 import type { SelectedFrame } from "@/lib/db/types";
-import { FRAMES, FRAME_IDS, frameInsets, frameScale } from "@/lib/frames/spec";
+import { FRAMES, FRAME_IDS, frameBoxInsets, frameScale } from "@/lib/frames/spec";
 import { frameCss } from "@/lib/frames/style";
 import { nineSliceRects } from "@/lib/frames/nine-slice";
 
@@ -39,8 +40,8 @@ export function FramesHarness() {
             <h2 className="mb-2 font-title text-lg">
               {FRAMES[id].label}{" "}
               <span className="font-body text-xs text-muted">
-                ({id} — ring costs {frameInsets(id, liveScale).w}×
-                {frameInsets(id, liveScale).h}px at ×{liveScale})
+                ({id} — framed box insets {frameBoxInsets(id, liveScale).w}×
+                {frameBoxInsets(id, liveScale).h}px at ×{liveScale})
               </span>
             </h2>
             <div className="flex flex-wrap items-start gap-8">
@@ -89,7 +90,8 @@ export function FramesHarness() {
             ))}
           </select>
         </div>
-        <div className="max-w-full bg-paper" style={frameCss(frame, liveScale)}>
+        {/* The real component the calendar and the M9 export both use — not a lookalike. */}
+        <FramedGrid frame={frame} scale={liveScale} width={undefined}>
           <div className="grid grid-cols-7 gap-px bg-line">
             {Array.from({ length: 42 }, (_, i) => (
               <div
@@ -100,7 +102,7 @@ export function FramesHarness() {
               </div>
             ))}
           </div>
-        </div>
+        </FramedGrid>
       </section>
     </main>
   );

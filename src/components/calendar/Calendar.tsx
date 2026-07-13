@@ -12,8 +12,7 @@ import {
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
 import { setSelectedFrame, setStartOfWeek } from "@/lib/db/mutations";
-import { frameInsets, frameScale } from "@/lib/frames/spec";
-import { frameCss } from "@/lib/frames/style";
+import { frameBoxInsets, frameScale } from "@/lib/frames/spec";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
 import { DayPage } from "@/components/day/DayPage";
 import { CalendarMenu } from "./CalendarMenu";
@@ -91,16 +90,15 @@ export function Calendar() {
 
   const todayDate = isCurrentMonth(year, month) ? todayISO() : null;
 
-  // The frame ring: `ink × scale` per side is all layout pays (the fat corner is drawn, not
-  // reserved — see frameCss), and fit.ts absorbs that into the gutter it already reserved, so
-  // on a phone the grid does not lose a single cell.
-  const framed = viewportW > 0;
+  // The frame wraps the header + grid inside each month view (FramedGrid), not this container —
+  // so that the framed box is the same rectangle on screen and in the M9 export. All the island
+  // owes it is the stepped scale, and the insets the fit model has to account for.
   const scale = frameScale(viewportW);
-  const ring = frameInsets(profile.selectedFrame, scale);
+  const ring = frameBoxInsets(profile.selectedFrame, scale);
   const cellW = computeCellW(view, {
     ...metrics,
-    frameW: framed ? ring.w : 0,
-    frameH: framed ? ring.h : 0,
+    frameW: viewportW > 0 ? ring.w : 0,
+    frameH: viewportW > 0 ? ring.h : 0,
   });
 
   // Measure viewport + chrome heights; recompute on resize. ResizeObserver fires an
@@ -247,6 +245,8 @@ export function Calendar() {
     todayDate,
     data,
     cellW,
+    frame: profile.selectedFrame,
+    frameScale: scale,
     headerRef,
     onOpenDay,
   };
@@ -258,18 +258,10 @@ export function Calendar() {
     >
       <TopBar onMenu={() => setMenuOpen(true)} />
 
-      {/* The frame rings the whole calendar block, in both views. It goes on THIS element
-          because `clientWidth/Height` — what the ResizeObserver below already reads — is the
-          padding box, i.e. already inside the border: the fit model sees the shrunk box for
-          free. A real border (not an overlay) also means the close-up's scroller clips its
-          columns exactly at the ring's inner edge, with no z-index or occlusion logic. */}
       <div
         ref={containerRef}
         className="flex h-full w-full flex-col items-center justify-center"
-        style={{
-          gap: TITLE_GRID_GAP,
-          ...(framed ? frameCss(profile.selectedFrame, scale) : null),
-        }}
+        style={{ gap: TITLE_GRID_GAP }}
       >
         <div ref={titleRef}>
           <MonthTitle

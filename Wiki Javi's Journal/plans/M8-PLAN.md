@@ -306,6 +306,85 @@ One thread — a straight chain. The only true leaf is Task 0, which is precisel
 
 ---
 
+## Re-grill (build phase): the frame belongs to the CALENDAR, not the viewport
+
+Decisions 3 and 6 above are **superseded**. The original plan hung the ring on the Calendar
+island's viewport-sized centering container. That was wrong, and it was wrong for a reason worth
+writing down: **the frame's real purpose is the M9 export.** A frame is what makes a downloaded
+month *a keepsake* rather than a screenshot of a grid. A ring bolted to the viewport can never
+appear in that PNG — the exporter would have to reconstruct a frame the user never actually saw.
+
+Resolved (owner, build-phase grill):
+
+3′. **The frame wraps the weekday header + the 7×6 grid — and nothing else.** The month title
+    stays *outside* it, as page chrome. So the framed box is **one and the same rectangle
+    everywhere**: full-month, the close-up scroller, and the exported PNG. It lives in a single
+    shared component, `src/components/calendar/FramedGrid.tsx`, tagged `data-month-frame` — the
+    element M9 rasterizes. (`content-box` sizing is load-bearing there: `width` is the grid's
+    `7 × cellW`, with the ring and mat hanging *outside* it. Under Tailwind's default
+    `border-box` the ring would eat into the seven columns.)
+
+3″. **In the close-up view the ring scrolls WITH the columns** (it wraps the scrolling content,
+    not the scroll window). She meets its left edge at the month's start and its right edge at
+    the end; the top and bottom rules are always on screen. Rejected: pinning the ring to the
+    visible window — it would have made the framed box a *different* rectangle in each view, and
+    the export would no longer be the thing she was looking at. `MonthCloseUp`'s today-centering
+    now offsets by the ring's left inset.
+
+6′. **The ring is charged PER EDGE, by one rule:** an edge at the block's outer boundary may
+    overhang into the 24px `GUTTER` (which is otherwise just empty breathing room); an edge
+    facing interior chrome is paid for.
+    - **Left, right, bottom → free.** Inset from the viewport is `max(GUTTER, frame)`, never the
+      sum. Every ring is ≤ 24px at ×2, so **`cellW` on a phone is bit-identical with and without
+      a frame** — the "never fights her" assertion, still asserted.
+    - **Top → charged.** It is the one ring edge *not* at the boundary: the month title sits
+      above it. `frameH` joins the height overhead. (Charging it on *both* vertical edges, which
+      is what I tried first, silently cost the phone 2px of `cellW` — the suite caught it.)
+
+4′. **A paper mat of `1 × scale` px sits between the ring's inner edge and the grid**
+    (`FRAME_MAT`). Without it the pixel scallops butt straight into the grid's 1px hairlines —
+    two different line languages touching — and the frame reads as stuck on rather than wrapped
+    around. It costs nothing: it comes out of the gutter the ring already overhangs into. It
+    matters *more* in the export than on screen, because a downloaded PNG gets looked at closely.
+
+14′. **M9's debt is now nearly zero.** Its export target is a single measured element
+     (`[data-month-frame]`) whose geometry it can rasterize with `nineSliceRects` — the frame in
+     the PNG is by construction the frame she chose and has been looking at.
+
+## Deviations found during the build
+
+**Decision 5's outset had the sign backwards.** The plan specified
+`border-image-outset: (slice − ink) × scale`, bleeding the corner surplus **outward**. That is
+wrong, and it was caught by rendering it (`/dev/frames` ships an A/B of both geometries during
+the build; the shipped code keeps only the winner).
+
+The slice inset is measured **inward from the source's outer edge** — it *is* the corner width,
+grown past the ink to reach the period-8 phase. So the surplus is **interior-side**, not
+exterior. Outsetting it outward shifts source pixel 0 *outside* the border box: on the Calendar,
+whose framed container is exactly viewport-sized inside an `overflow-hidden` main, that clips the
+outer scallops clean off (12px of hgss_15's ring, off-screen).
+
+What ships instead — same goal, right direction:
+
+```
+border-width:        ink   × scale   ← what layout pays for  (unchanged)
+border-image-width:  slice × scale   ← how thick the image ring is drawn  (unchanged)
+border-image-outset: 0                ← the surplus overhangs INWARD
+```
+
+The drawn ring simply overhangs the padding box by `(slice − ink) × scale`, where it is
+transparent along the edges and carries only the corner flourish at the corners. Nothing is
+clipped, nothing is occluded, and — the part that matters — **layout still pays only the ink**,
+so decisions 6 and 7 (the frame is free on a phone) hold exactly as planned and are asserted by
+the suite. Verified in the browser: ×4 desktop reports `border-width: 24px`, `border-image-width:
+32px`, `outset: 0`, `repeat: round`, `image-rendering: pixelated`, and `clientWidth` = viewport −
+2 × ink.
+
+The CSS lives in `src/lib/frames/style.ts` (`frameCss`) rather than inline in `Calendar.tsx` —
+one home for the geometry, and a 4-line diff to the file M7 is also editing.
+
+---
+
 ## Manual steps (owner — not for agents)
 - **No migration to push.** `profiles.selected_frame` already exists in hosted Supabase (M1).
 - **Tier-2 browser gate** (Definition of done): owner-run, on a real phone. The one claim no test

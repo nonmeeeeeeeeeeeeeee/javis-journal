@@ -3,7 +3,9 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { monthGrid, toColumnMajor } from "@/lib/calendar/month-grid";
+import { frameBoxInsets } from "@/lib/frames/spec";
 import { DayCell } from "./DayCell";
+import { FramedGrid } from "./FramedGrid";
 import { WeekdayHeader } from "./WeekdayHeader";
 import type { MonthViewProps } from "./MonthView";
 
@@ -26,12 +28,20 @@ export function MonthCloseUp({
   todayDate,
   data,
   cellW,
+  frame,
+  frameScale,
   headerRef,
   onOpenDay,
 }: MonthViewProps) {
   const rowMajor = monthGrid(year, month, startOfWeek);
   const cells = toColumnMajor(rowMajor);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // The ring wraps the SCROLLING CONTENT, so it scrolls with the columns — she meets its left
+  // edge at the month's start and its right edge at the end, and the framed box is the same
+  // rectangle here, in full-month, and in the M9 export. Its left inset therefore shifts every
+  // column right, and the today-centering below has to know that.
+  const ring = frameBoxInsets(frame, frameScale).w;
 
   // Center on today's column (current month only), instantly, once laid out.
   useLayoutEffect(() => {
@@ -42,24 +52,27 @@ export function MonthCloseUp({
     if (idx < 0) return;
     const col = idx % 7; // visual column is preserved between row/column-major
 
-    const columnCenter = SCROLL_PAD + col * cellW + cellW / 2;
+    const columnCenter = SCROLL_PAD + ring + col * cellW + cellW / 2;
     const target = columnCenter - el.clientWidth / 2;
     const max = el.scrollWidth - el.clientWidth;
     el.scrollLeft = Math.max(0, Math.min(target, max));
-    // rowMajor is derived from these deps; re-center when cellW/month/today change.
+    // rowMajor is derived from these deps; re-center when cellW/month/today/frame change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellW, year, month, startOfWeek, todayDate]);
+  }, [cellW, year, month, startOfWeek, todayDate, ring]);
 
   return (
-    // w-full, not w-screen: the scroller must live INSIDE the M8 frame ring, not run under it.
-    <div className="w-full max-w-full">
+    <div className="w-screen max-w-full">
       {/* Free horizontal scroll (pan-x lets 1-finger scroll while Calendar owns
           pinch); header + grid share the scroller so labels track their columns. */}
       <div
         ref={scrollerRef}
         className="overflow-x-auto overflow-y-hidden px-6 [overscroll-behavior-x:contain] [scrollbar-width:none] [touch-action:pan-x] [&::-webkit-scrollbar]:hidden"
       >
-        <div style={{ width: cellW > 0 ? cellW * 7 : undefined }}>
+        <FramedGrid
+          frame={frame}
+          scale={frameScale}
+          width={cellW > 0 ? cellW * 7 : undefined}
+        >
           <div ref={headerRef}>
             <WeekdayHeader startOfWeek={startOfWeek} colWidth={cellW} />
           </div>
@@ -77,12 +90,12 @@ export function MonthCloseUp({
                 cell={cell}
                 isToday={cell !== null && cell.date === todayDate}
                 day={cell ? (data.get(cell.date) ?? null) : null}
-              width={cellW}
-              onOpen={onOpenDay}
+                width={cellW}
+                onOpen={onOpenDay}
               />
             ))}
           </div>
-        </div>
+        </FramedGrid>
       </div>
     </div>
   );

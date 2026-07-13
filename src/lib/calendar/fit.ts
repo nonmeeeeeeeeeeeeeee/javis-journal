@@ -22,39 +22,46 @@ export const CELL_ASPECT_RATIO = 7 / 6;
 export const CELL_ASPECT = "7 / 6";
 
 export type FitMetrics = {
-  /** Available box width (px) — the container's *padding* box, i.e. already inside the frame. */
+  /** Available box width (px). */
   availW: number;
-  /** Available box height (px) — likewise inside the frame. */
+  /** Available box height (px). */
   availH: number;
   /** Measured month-title height (px). */
   titleH: number;
   /** Measured weekday-header height (px). */
   headerH: number;
-  /** M8: the frame's per-side horizontal ink, px. 0 = no frame. */
+  /** M8: the framed box's per-side horizontal inset (ring + mat), px. 0 = no frame. */
   frameW?: number;
-  /** M8: the frame's per-side vertical ink, px. 0 = no frame. */
+  /** M8: the framed box's per-side vertical inset (ring + mat), px. 0 = no frame. */
   frameH?: number;
 };
-
-/**
- * The breathing room still owed *inside* the frame. The gutter is empty space that already
- * exists, and the M8 frame lives IN it rather than on top of it: the total inset from the
- * viewport is `max(GUTTER, frameInset)`, never `GUTTER + frameInset`. So a ring thinner than
- * 24px — which is every frame at phone scale — costs the grid exactly zero cells.
- */
-function innerGutter(frameInset = 0): number {
-  return Math.max(0, GUTTER - frameInset);
-}
 
 /**
  * Cell width for the given view + metrics. Picks the smaller of the width-bound and
  * height-bound candidates so the grid always fits without vertical scroll and the
  * binding dimension wins. Floored, never negative.
+ *
+ * The M8 frame wraps the weekday header + grid, and is charged **per edge**, by one rule: a ring
+ * edge that sits at the block's outer boundary may overhang into the GUTTER — which is currently
+ * just empty breathing room — while an edge facing interior chrome must be paid for.
+ *
+ *  • **Left, right and bottom are free.** Those ring edges ARE the block's outer edge, so the
+ *    inset from the viewport becomes `max(GUTTER, frame)`, never `GUTTER + frame`. Every ring is
+ *    ≤ 24px at phone scale, so `cellW` on a phone is bit-identical with and without a frame.
+ *    This is "never fights her", and it is the assertion that would regress silently.
+ *
+ *  • **The top edge is charged.** It is the one ring edge NOT at the boundary — the month title
+ *    sits above it — so there is no gutter there to overhang into, and `frameH` joins the height
+ *    overhead alongside the title and header.
  */
 export function computeCellW(view: CalendarView, m: FitMetrics): number {
-  const usableW = m.availW - innerGutter(m.frameW) * 2;
-  const usableH = m.availH - innerGutter(m.frameH) * 2;
-  const overhead = m.titleH + TITLE_GRID_GAP + m.headerH;
+  const frameW = m.frameW ?? 0;
+  const frameH = m.frameH ?? 0;
+
+  const usableW = m.availW - Math.max(GUTTER, frameW) * 2;
+  // Top gutter is untouched (it sits above the title); the bottom one absorbs the bottom ring.
+  const usableH = m.availH - GUTTER - Math.max(GUTTER, frameH);
+  const overhead = m.titleH + TITLE_GRID_GAP + m.headerH + frameH;
   const heightBoundW = ((usableH - overhead) / 6) * (7 / 6);
   const divisor = view === "full-month" ? FULL_DIVISOR : CLOSEUP_DIVISOR;
   const widthBoundW = usableW / divisor;

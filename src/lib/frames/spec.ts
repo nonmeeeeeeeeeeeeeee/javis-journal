@@ -85,9 +85,18 @@ export function frameScale(viewportW: number): number {
 }
 
 /**
- * What the ring costs layout, per side, in device px — the **ink** only, never the slice
- * (the surplus is outset outward). The ring is symmetric by construction, so one number per
- * axis is the whole truth; `fit.ts` consumes these as `frameW`/`frameH`.
+ * The paper mat between the ring's inner edge and the grid, in **source px** (so it scales on
+ * the same pixel step as the art). Without it the pixel scallops butt straight into the grid's
+ * 1px hairlines — two different line languages touching — and the frame reads as stuck on
+ * rather than wrapped around. It costs nothing: it comes out of the gutter the ring already
+ * overhangs into.
+ */
+export const FRAME_MAT = 1;
+
+/**
+ * What the ring costs layout, per side, in device px — the **ink** only, never the fatter slice
+ * (that surplus is drawn, not reserved; see frameCss). The ring is symmetric by construction, so
+ * one number per axis is the whole truth. This is the `border-width` frameCss sets.
  */
 export function frameInsets(
   frame: SelectedFrame,
@@ -95,4 +104,16 @@ export function frameInsets(
 ): { w: number; h: number } {
   const { ink } = FRAMES[frame];
   return { w: ink.l * scale, h: ink.t * scale };
+}
+
+/**
+ * The whole framed box's inset per side — ring **plus** mat. This is what separates the grid
+ * from the outside world, and therefore what `fit.ts` consumes as `frameW`/`frameH`.
+ */
+export function frameBoxInsets(
+  frame: SelectedFrame,
+  scale: number,
+): { w: number; h: number } {
+  const { ink } = FRAMES[frame];
+  return { w: (ink.l + FRAME_MAT) * scale, h: (ink.t + FRAME_MAT) * scale };
 }
