@@ -15,17 +15,27 @@ import { mainPath, thumbPath } from "./storage-paths";
 // change events). Content dedupe across separate picks is intentionally deferred.
 const inFlight = new Map<File, Promise<string>>();
 
-/** Ingest a picked file; resolves with the minted image id. */
-export function ingestImage(file: File, kind: ProcessKind = "photo"): Promise<string> {
+/**
+ * Ingest a picked file; resolves with the image id.
+ *
+ * `id` is supplied only by the sticker seeder (M7), which needs **deterministic** ids so a
+ * second device seeding the same sticker writes the same primary key — an upsert, not a
+ * duplicate. Every other caller lets one be minted.
+ */
+export function ingestImage(
+  file: File,
+  kind: ProcessKind = "photo",
+  options: { id?: string } = {},
+): Promise<string> {
   const existing = inFlight.get(file);
   if (existing) return existing;
 
-  const run = doIngest(file, kind).finally(() => inFlight.delete(file));
+  const run = doIngest(file, kind, options.id).finally(() => inFlight.delete(file));
   inFlight.set(file, run);
   return run;
 }
 
-async function doIngest(file: File, kind: ProcessKind): Promise<string> {
+async function doIngest(file: File, kind: ProcessKind, forcedId?: string): Promise<string> {
   // Fail-closed: never write partial state on a decode/transcode failure.
   let processed;
   try {
@@ -36,7 +46,7 @@ async function doIngest(file: File, kind: ProcessKind): Promise<string> {
   }
 
   const uid = await currentUserId();
-  const id = crypto.randomUUID();
+  const id = forcedId ?? crypto.randomUUID();
 
   const blobRow: ImageBlobRow = {
     id,
