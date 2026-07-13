@@ -78,12 +78,12 @@ sequenceDiagram
   participant ST as Storage
   participant PG as Postgres
   UI->>IMG: pick image (HEIC decode if needed) — transient
-  UI->>IMG: pan/zoom/rotate-mode behind mask (ALG-2 live preview)
+  UI->>IMG: punch machine — drag / two-finger pinch + twist behind the mask window (ALG-2 live preview)
   IMG->>IMG: Cut → bake masked WebP-alpha closeup + thumb (ALG-2)
   UI->>ST: Storage PUT baked webp closeup + thumb
   UI->>PG: POST /images (mime image/webp)
   UI->>UI: ALG-8 auto-place centered at max fit (day page)
-  UI->>PG: upsert /entries + /stamps (debounced, ALG-3)
+  UI->>PG: upsert /entries + /stamps — created ATOMICALLY on the first cut (debounced, ALG-3)
 ```
 
 **FLOW-3 — Add 2nd & 3rd stamps (US-8)**
@@ -94,9 +94,9 @@ sequenceDiagram
   participant IMG as Image+cutter
   participant ST as Storage
   participant PG as Postgres
-  UI->>UI: tap day → day canvas (close-up), adjacent days peeking
+  UI->>UI: tap day → day page overlay (the 7:6 cell zoomed); adjacent days peek (decoration, not navigable)
   UI->>UI: tap floating + FAB (bottom-right; hidden at 3 stamps)
-  UI->>IMG: pick image → stamper frame → Cut → bake WebP-alpha (ALG-2)
+  UI->>IMG: pick image → punch machine (drag / pinch / twist) → press the drawer → bake WebP-alpha (ALG-2)
   UI->>ST: Storage PUT baked webp closeup + thumb
   UI->>PG: POST /images (mime image/webp)
   UI->>UI: place at ~60% max-fit, cascade-offset, layer_order = max+1
@@ -110,12 +110,30 @@ sequenceDiagram
   participant UI
   participant IDB as IndexedDB
   participant PG as Postgres
-  UI->>UI: tap day with stamps → Day page (close-up)
-  UI->>UI: tap to select · drag to move · long-press → menu (ALG-9)
-  UI->>IDB: edit transform / layer_order (optimistic)
+  UI->>UI: tap day with stamps → Day page overlay (FLIP zoom from the tapped cell)
+  UI->>UI: long-press → select · drag / pinch / twist (snap 45°) · tap → front/back (ALG-9)
+  UI->>IDB: one write per gesture, on gesture-end (transform / layer_order)
   UI->>PG: debounced sync (ALG-3)
-  Note over UI: Delete → "Deleted — Undo" toast; on commit set deleted_at (ALG-4)
+  Note over UI: ✕ on the selection → optimistic soft-delete (deleted_at) + "Deleted — Undo" (restores the original layer_order)
 ```
+
+**The day page (M6, UI)** — a **client overlay inside the Calendar island**, not a route: the calendar
+(and its warm thumb handles) stays mounted underneath, view state is still never in the URL, and a
+`history.pushState` guard makes the system back gesture close the day instead of leaving the app. The
+page **is the 7:6 calendar cell zoomed** (`CELL_ASPECT`) — it FLIP-animates out of the tapped cell
+(~250ms; `prefers-reduced-motion` or any failure → it just opens instantly, and the page never *waits*
+on the animation). It has **no title**: it shows the same day-number chip `DayCell` renders, scaled up
+(so nothing pops in or out of the zoom); the weekday name belongs to the calendar. Adjacent days peek
+around it as static dimmed slivers reusing the month's already-resolved thumbs — **decoration, not
+navigation** (no swipe-to-adjacent-day: it would fight the drag gesture). The only exits are back /
+backdrop-tap → the calendar. Tapping an **empty** day never shows an empty page — it opens the OS photo
+picker directly (US-7); an abandoned pick or a failed bake writes **nothing** (the `entries` row is
+created lazily and atomically with the first `stamps` row).
+
+**The calendar cell (M6)** renders the day's **faithful mini-composition** — every live stamp at its
+real `pos`/`scale`/`rotation`, via the *same* `stampBoxes()` the day page uses, at 256px-thumb size.
+Cell and page are both 7:6 boxes in the same normalized coordinates, so this is one layout function at
+two pixel sizes.
 
 **FLOW-5 — Silent optimistic autosave (US-11)**
 
@@ -151,7 +169,7 @@ pinch-out → smooth scale to the full-month grid (start-of-week aware, ALG-5, f
 margin); pinch-in → back to close-up. The default view is chosen by pointer type
 (`(pointer: coarse)` → close-up, else full-month); a 3-dots "Toggle full-month view" item is
 the all-device switch. Exactly one month is mounted at a time (month navigation is fully
-discrete — ALG-6). *(M4: implemented; the "into a day" tap-navigation is M6.)*
+discrete — ALG-6). *(M4: implemented. M6 adds the tap-into-a-day overlay; while a day is open the pinch handler no-ops.)*
 
 **FLOW-8 — Change calendar frame (US-10)**
 
@@ -240,7 +258,7 @@ Notes:
 - **Purpose / trigger:** the signature feature — frame a photo behind a shape mask and **bake** it to a stamp.
 - **Runs on:** client.
 - **Inputs → outputs:** source image (transient, EXIF-baked) + mask id + live transform `{offX, offY, scale, rotation}` → **two baked WebP-alpha blobs** (a ~2048px closeup + a 256px grid thumb) stored via the existing `images` row + private bucket. **No crop is stored; the raw photo is discarded on confirm.** The cutter returns only `onConfirm(image_id)`.
-- **Approach:** the **single render path** (`render.ts`) is used by *both* the live preview and the bake, so preview == bake by construction — this is what kills the "shifted after cutting" bug under destructive baking. The photo is drawn rotated/panned/zoomed behind an **upright** mask window, the mask alpha is applied via `globalCompositeOperation='destination-in'` (not CSS `clip-path`, inconsistent on Safari/iOS for heart / scallop / postage edges), then `mask.frame` (postage perforation) is drawn `source-over` on top. **Rotation is a mode** (Rotate button toggles drag→rotate); the mask outline stays upright while the photo tilts. A **rotation-aware coverage clamp** (ALG-2a below) guarantees no transparent corner ever bakes. Baked as `image/webp` q0.8 with an `image/png` fallback where `convertToBlob('image/webp')` is unsupported.
+- **Approach:** the **single render path** (`render.ts`) is used by *both* the live preview and the bake, so preview == bake by construction — this is what kills the "shifted after cutting" bug under destructive baking. The photo is drawn rotated/panned/zoomed behind an **upright** mask window, the mask alpha is applied via `globalCompositeOperation='destination-in'` (not CSS `clip-path`, inconsistent on Safari/iOS for heart / scallop / postage edges), then `mask.frame` (postage perforation) is drawn `source-over` on top. **Framing is direct manipulation** (M6): drag pans, two fingers pinch to zoom and twist to rotate — continuous, no snap (any angle is legal; the bake absorbs it). *(M5's rotate-**mode** toggle and its −/+ steppers are retired.)* The mask outline stays upright while the photo tilts. A **rotation-aware coverage clamp** (ALG-2a below) guarantees no transparent corner ever bakes. Baked as `image/webp` q0.8 with an `image/png` fallback where `convertToBlob('image/webp')` is unsupported.
 - **Coverage clamp (ALG-2a, the no-blank-corner invariant):** the sampling rectangle (mask-aspect, rotated by `rotation` in source space) must stay fully inside the source image. Its axis-aligned bounding box is `W_s·|cos|+H_s·|sin|` × `W_s·|sin|+H_s·|cos|`; min-zoom is the smallest `scale` whose sampling rect's AABB still fits — a **function of rotation angle** (at 45° coverage shrinks ~√2). Entering/continuing rotate mode auto-bumps zoom to the angle's min-cover. Pan is clamped so the (rotated) sampling rect stays within the image bounds. Purely a live cut-time concern — no persistence, no sync.
 - **Pseudocode (the shared render path):**
   ```
@@ -259,6 +277,7 @@ Notes:
   ```
 - **Complexity / performance:** O(output pixels) per render; cheap enough for live preview; the bake renders twice (closeup + thumb) once, on confirm.
 - **Edge cases:** image smaller than the mask window (min-cover clamp handles it); DPR is irrelevant (we bake fixed-resolution pixels, not a live transform); a decode/bake failure is **fail-closed** (throws `ImagePipelineError`, writes nothing). Because the stamp is baked, there is no "re-fit later" path — a fix is delete + re-cut from the photo (M6).
+- **The machine (M6):** the cutter is presented as a **skeuomorphic punch machine** (`public/stamper/punch.webp`), full-screen over the day page. Its window is a genuine **transparent hole**, so three layers stack: the preview canvas (behind) → the machine art → the controls (`pointer-events: none` except its own controls, so gestures reach the canvas). `PUNCH_WINDOW` — one calibrated constant normalized to the asset — locates the hole, and the mask window letterboxes inside it for all 4 mask aspects (unit-tested). ‹ › chevrons in the side gutters cycle the mask; **the cut is a press on the drawer plate** (it depresses and darkens, and carries a small "cut" label — a photorealistic plate with no text is a discoverability gamble on the screen she uses daily); the stamp emerges from the slot into the drawer (the M10 flourish hangs off exactly this seam and must degrade gracefully). ✕ / the system back gesture cancels, writing nothing.
 - **Libraries:** Canvas 2D / `OffscreenCanvas`; masks are SVG-path→`Path2D` alphas (crisp at any bake size).
 
 ### ALG-3 — Optimistic autosave + debounced push
@@ -352,50 +371,83 @@ Notes:
   ```
 - **Edge cases:** manual 9-slice math for the frame (CSS `border-image` doesn't apply to canvas); large months chunked to stay responsive.
 
-### ALG-8 — Auto-place + 3-cap + layer order
+### ALG-8 — Auto-place + 3-cap + layer order  *(M6: constants pinned)*
 - **Purpose / trigger:** placing a freshly cut stamp (US-7, US-8).
 - **Runs on:** client (a Postgres `BEFORE INSERT` trigger also enforces the cap).
-- **Inputs → outputs:** `(entry, stamp)` → the stamp positioned on that day's page with a `layer_order`.
-- **Approach:** `entry` is the tapped day-page (`entries` row); the stamp binds to it via `entry_id`, and `pos`/`scale` are **normalized to the day page**, so a stamp can never spill onto the whole calendar. The first stamp is centered at max fit; the 2nd/3rd enter smaller (~60%) and cascade-offset so they don't fully cover; newest lands on top via `layer_order = max+1`. Front/back adjust `layer_order`.
+- **Inputs → outputs:** `(the day's existing live stamps, the baked stamp's aspect)` → `{pos_x, pos_y, scale, rotation_deg, layer_order}`.
+- **The coordinate model (M6, load-bearing):** the day page **is the calendar cell zoomed** — the same
+  fixed **7:6** box (`CELL_ASPECT`). `pos_x`/`pos_y` ∈ [0,1] are the stamp's **center**, and **`scale`
+  is the stamp's width as a fraction of the page's width**; its height follows from the baked image's
+  own aspect. Everything is normalized to that box, so a day composed on the phone renders identically
+  in the calendar cell, on desktop, and in the M9 PNG export — and a stamp can never spill outside its
+  day.
+- **Approach:** the first stamp is centered at max-fit inside a margin; the 2nd/3rd enter smaller and
+  cascade diagonally so they don't fully cover; every box is clamped back inside the page; the newest
+  lands on top via `layer_order = max+1`. All tunables live in one `PLACEMENT` object
+  (`src/lib/day/place.ts`) — retuning the feel is a one-object edit, and the tests assert invariants,
+  not the constants.
 - **Pseudocode:**
   ```
-  placeStamp(entry, stamp):              # entry = the tapped day (entries row)
-    n = countStamps(entry.id)            # scoped to THIS day via entry_id
-    if n >= 3: return reject()           # + hidden at 3
-    stamp.entry_id = entry.id            # binds the stamp to that day ONLY
-    if n == 0:                           # first stamp
-       stamp.pos   = {x:0.5, y:0.5}                  # centered on the day page
-       stamp.scale = maxFit(stamp.aspect, dayPage.aspect, margin)
-    else:                                # 2nd / 3rd stamp
-       stamp.scale = 0.62 * maxFit(stamp.aspect, dayPage.aspect, margin)
-       stamp.pos   = cascade({x:0.5,y:0.5}, n)       # offset so it doesn't cover
-    stamp.rotation    = 0
-    stamp.layer_order = maxLayer(entry.id) + 1       # newest lands on top
-  # pos/scale are day-page normalized, NOT calendar → confined to the day
+  PLACEMENT = { MARGIN: 0.06,          # of the page's shorter side
+                SECOND_SCALE: 0.62,    # of maxFit, for stamps 2 and 3
+                CASCADE: 0.10,         # per-stamp diagonal offset from center
+                MAX_STAMPS: 3 }
+  placeStamp(existing, aspect):          # existing = the day's LIVE stamps
+    n = existing.length
+    if n >= PLACEMENT.MAX_STAMPS: return reject()       # + the FAB is hidden at 3
+    maxFit = largest w (fraction of pageW) whose w x w/aspect box fits inside the margin
+    if n == 0: scale = maxFit;                        pos = {x:0.5, y:0.5}
+    else:      scale = PLACEMENT.SECOND_SCALE*maxFit; pos = {x:0.5+n*CASCADE, y:0.5+n*CASCADE}
+    pos = clampInsidePage(pos, scale, aspect)         # the box is ALWAYS fully on the page
+    rotation_deg = 0;  layer_order = maxLayer(existing) + 1
   bringToFront(s): s.layer_order = maxLayer+1; touch(s)
   sendToBack(s):   s.layer_order = minLayer-1; touch(s)
   ```
-- **Edge cases:** 4th insert rejected on client and DB; aspect ratios wider/taller than the day page (max-fit respects both).
+- **Edge cases:** the 4th insert is rejected on the client **and** in the DB; a portrait stamp at
+  max-fit on the landscape 7:6 page is height-bound and leaves side margins (correct and intended);
+  the cascade clamp pulls a stamp back on-page rather than letting it hang off a corner.
 
-### ALG-9 — Phone gesture disambiguation
-- **Purpose / trigger:** all touch interaction on the editor — the #1 phone design risk.
+### ALG-9 — Phone gesture disambiguation  *(ADR-M6: direct manipulation — this replaces the long-press **menu**)*
+- **Purpose / trigger:** all touch interaction on the day page — the #1 phone design risk.
 - **Runs on:** client.
-- **Inputs → outputs:** pointer events → one of: select (tap), move (drag), long-press menu, or canvas pan.
-- **Approach:** on pointer-down, hit-test the top element by `layer_order`; a down on an already-selected element arms a long-press timer and a "maybe-drag"; movement past an 8px slop cancels the timer and becomes a drag; a down on empty space pans the calendar. Resize/rotate live in the long-press menu (not ambient handles), removing the resize-drag-vs-pan conflict. The floating **+** FAB is a fixed control outside the gesture surface. `touch-action: none` on elements prevents the browser stealing the gesture.
+- **Inputs → outputs:** pointer events → select · move · scale · rotate · front/back · delete.
+- **Approach — select, then manipulate.** There is **no menu, no resize mode, no handles, no
+  drag-to-trash**. **Long-press selects** a stamp (marked by a blue shadow underneath); *selection is
+  the gate* — an unselected stamp cannot be moved, so a fat thumb can never knock a composition askew.
+  On the **selected** stamp: one finger **drags**, two fingers **pinch to scale** and **twist to
+  rotate**, snapping to the nearest **45°** on release (so `rotation_deg` stays legal). All clamped —
+  scale ∈ [floor, maxFit], the box always inside the page. A **short tap on *any* stamp toggles
+  front/back** (tap a buried stamp → it comes to the front; tap the top one → it goes to the back);
+  that is the entire layer-order UI, and it needs no selection. While selected, a **✕ floats just off
+  the stamp's top-right corner** (a 44px target, outside the stamp's bounds so it never blocks a
+  pinch) → soft-delete + a "Deleted — Undo" toast. Tapping empty page space deselects.
+  `touch-action: none` on the page; the page never scrolls or pans.
+- **Hit-testing is our math, not `elementFromPoint`:** a baked heart/cloud stamp is a rectangle with
+  transparent corners, so the DOM would let a top stamp's *empty* corner steal a tap from the stamp
+  visibly underneath. `topElementAt(p)` inverse-rotates the point into each stamp's local space and
+  takes the **highest `layer_order` whose bounding box contains it** — predictable, and correct for
+  45°-snapped rectangles.
 - **Pseudocode:**
   ```
   onDown(p):
-    hit = topElementAt(p)                 # highest layer_order under point
-    if hit && hit.selected: mode='maybeDrag'; timer(LONGPRESS=500)
-    elif hit: select(hit); mode='tap'
-    else: mode='canvasPan'                # empty area → scroll calendar
+    hit = topElementAt(p)                       # our math: inverse-rotate -> bbox -> top layer
+    if !hit: mode='maybeDeselect'; return
+    armLongPress(LONGPRESS=450)                 # -> select(hit)
+    mode = (hit.id == selected) ? 'maybeDrag' : 'maybeTap'
   onMove(p):
-    if mode=='maybeDrag' && dist(p,start)>SLOP(8): cancelTimer; mode='drag'
-    drag→moveElement(hit,p);  canvasPan→scroll(p)
-  onLongPress(): if mode=='maybeDrag': openMenu(hit)  # Resize·Rotate·F/B·Delete
-  onUp(): if mode=='tap': commitSelect(hit)
+    if dist(p, start) > SLOP(8): cancelLongPress()
+    if mode=='maybeDrag' and moved:      mode='drag';      moveElement(selected, p)   # clamped
+    if 2 pointers and selected:          mode='transform'; scale *= pinch; rot += twist  # live, no write
+  onUp():
+    if mode is a tap (no movement):      toggleFrontBack(hit)     # tap = front/back
+    if mode=='maybeDeselect':            deselect()
+    if mode=='transform':                rot = snap45(rot)
+    if mode in {'drag','transform'}:     writeOnce(selected)      # ONE write, on gesture-end
   ```
-- **Edge cases:** overlapping stamps (top by `layer_order`); accidental micro-drags (slop threshold); must be validated on a real device, not just a desktop mobile emulator.
+- **Edge cases:** overlapping stamps (top by `layer_order`); accidental micro-drags (8px slop); writes
+  happen **once per gesture, on gesture-end** — never per animation frame; a day-page pinch must never
+  reach the calendar's pinch-to-switch (the overlay stops propagation **and** the calendar's handler
+  no-ops while a day is open); must be validated on a real device.
 
 ## Open Technical Questions
 

@@ -152,6 +152,43 @@ export async function getThumbUrls(ids: string[]): Promise<Map<string, ThumbHand
   return out;
 }
 
+/**
+ * Batch variant of {@link getCloseupUrl} — the day page resolves all of a day's stamps in one
+ * round-trip and releases every handle when the overlay closes (ALG-6; there is a canary test).
+ */
+export async function getCloseupUrls(ids: string[]): Promise<Map<string, ThumbHandle>> {
+  const out = new Map<string, ThumbHandle>();
+
+  const [localRows, imageRows] = await Promise.all([
+    db.image_blobs.bulkGet(ids),
+    db.images.bulkGet(ids),
+  ]);
+
+  const misses: { id: string; path: string }[] = [];
+
+  ids.forEach((id, i) => {
+    const main = localRows[i]?.main;
+    if (main) {
+      out.set(id, objectUrlHandle(main));
+      return;
+    }
+    const path = imageRows[i]?.storage_path;
+    if (path) misses.push({ id, path });
+  });
+
+  if (misses.length > 0) {
+    const signed = await getSignedUrls(misses);
+    for (const { id } of misses) {
+      const url = signed.get(id);
+      if (!url) continue;
+      void backfillCloseup(id, url);
+      out.set(id, { url, release: noop });
+    }
+  }
+
+  return out;
+}
+
 async function getSignedUrl(path: string): Promise<string | null> {
   const cached = signedCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.url;

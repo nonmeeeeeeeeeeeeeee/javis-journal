@@ -1,8 +1,15 @@
-// Pointer/gesture controller for the cutter surface. The photo is the only object, so there
-// is no ALG-9 hit-testing — drag pans, pinch/wheel zooms, and (in rotate mode) drag rotates.
+// Pointer/gesture controller for the cutter surface (the punch machine's window). The photo is
+// the only object, so there is no hit-testing — one finger pans, two fingers pinch to zoom and
+// twist to rotate. Rotation is CONTINUOUS and never snapped: this is the cutter, any angle is
+// legal, and the bake absorbs it.
+//
+// (M6 retired M5's rotate-*mode* toggle and its −/+ steppers: they only existed because there
+// was no two-finger gesture. `minCoverScale` / `clampPan` are unchanged — they constrain the
+// transform, not the input device.)
+//
 // Every mutation runs through normalize(), which applies the rotation-aware coverage clamp
-// (coverScale) + pan clamp live, so a transparent gap can never appear on screen or in the
-// bake. Framework-agnostic: React wires DOM events to these methods and redraws onChange.
+// (coverScale) + pan clamp live, so a transparent gap can never appear on screen or in the bake.
+// Framework-agnostic: React wires DOM events to these methods and redraws onChange.
 
 import {
   clampPan,
@@ -13,16 +20,13 @@ import {
 } from "./geometry";
 import type { Transform } from "./render";
 
-export type CutterMode = "pan" | "rotate";
-export type CutterState = Transform & { mode: CutterMode };
+export type CutterState = Transform;
 
 const MIN_SAMPLE_PX = 24; // max-zoom guard: never sample a region narrower than this
-const WHEEL_STEP = 1.1;
-const BUTTON_STEP = 1.2;
+const WHEEL_STEP = 1.1; // desktop only
 
 export class CutterController {
   private t: Transform = { offX: 0, offY: 0, scale: 1, rotation: 0 };
-  private mode: CutterMode = "pan";
   private imgW = 1;
   private imgH = 1;
   private maskAspect = 1;
@@ -31,7 +35,7 @@ export class CutterController {
 
   private pointers = new Map<number, { x: number; y: number }>();
   private lastSingle: { x: number; y: number } | null = null;
-  private pinch: { dist: number; mid: { x: number; y: number } } | null = null;
+  private pinch: { dist: number; angle: number; mid: { x: number; y: number } } | null = null;
 
   constructor(private readonly onChange: (s: CutterState) => void) {}
 
@@ -57,28 +61,10 @@ export class CutterController {
   }
 
   getState(): CutterState {
-    return { ...this.t, mode: this.mode };
+    return { ...this.t };
   }
 
-  setMode(mode: CutterMode): void {
-    this.mode = mode;
-    if (mode === "rotate") this.normalize(); // ensure min-cover as we enter rotate
-    this.emit();
-  }
-
-  toggleMode(): void {
-    this.setMode(this.mode === "pan" ? "rotate" : "pan");
-  }
-
-  // ---- discrete controls ----
-  zoomIn(): void {
-    this.zoomBy(BUTTON_STEP);
-    this.emit();
-  }
-  zoomOut(): void {
-    this.zoomBy(1 / BUTTON_STEP);
-    this.emit();
-  }
+  /** Desktop affordance only (the phone pinches). */
   wheel(deltaY: number): void {
     this.zoomBy(deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP);
     this.emit();
@@ -89,7 +75,7 @@ export class CutterController {
     this.pointers.set(id, { x, y });
     if (this.pointers.size >= 2) {
       const [a, b] = [...this.pointers.values()];
-      this.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: mid(a, b) };
+      this.pinch = { dist: distance(a, b), angle: angle(a, b), mid: mid(a, b) };
       this.lastSingle = null;
     } else {
       this.lastSingle = { x, y };
@@ -103,23 +89,22 @@ export class CutterController {
 
     if (pts.length >= 2) {
       const [a, b] = pts;
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const d = distance(a, b);
+      const ang = angle(a, b);
       const m = mid(a, b);
       if (this.pinch) {
-        if (this.pinch.dist > 0) this.zoomBy(dist / this.pinch.dist);
+        if (this.pinch.dist > 0) this.zoomBy(d / this.pinch.dist);
+        this.rotateBy(ang - this.pinch.angle); // twist to rotate — continuous, no snap
         this.panByScreen(m.x - this.pinch.mid.x, m.y - this.pinch.mid.y);
       }
-      this.pinch = { dist, mid: m };
+      this.pinch = { dist: d, angle: ang, mid: m };
       this.lastSingle = null;
       this.emit();
       return;
     }
 
     if (this.lastSingle) {
-      const dx = x - this.lastSingle.x;
-      const dy = y - this.lastSingle.y;
-      if (this.mode === "rotate") this.rotateByScreen(dx, dy);
-      else this.panByScreen(dx, dy);
+      this.panByScreen(x - this.lastSingle.x, y - this.lastSingle.y);
       this.emit();
     }
     this.lastSingle = { x, y };
@@ -158,10 +143,10 @@ export class CutterController {
     this.normalize();
   }
 
-  private rotateByScreen(dxScreen: number, dyScreen: number): void {
-    const span = Math.max(1, (this.winW + this.winH) / 2);
-    this.t.rotation += ((dxScreen - dyScreen) * Math.PI) / span; // ~180° per window-span drag
-    this.normalize();
+  /** `deg` is the change in the two fingers' angle. The photo follows the twist. */
+  private rotateBy(deg: number): void {
+    this.t.rotation -= (deg * Math.PI) / 180;
+    this.normalize(); // the angle's min-cover may now demand more zoom
   }
 
   private zoomBy(factor: number): void {
@@ -183,4 +168,12 @@ export class CutterController {
 
 function mid(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function angle(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
 }

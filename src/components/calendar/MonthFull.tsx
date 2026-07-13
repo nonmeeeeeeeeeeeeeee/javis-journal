@@ -18,6 +18,7 @@ export function MonthFull({
   data,
   cellW,
   headerRef,
+  onOpenDay,
 }: MonthViewProps) {
   const cells = monthGrid(year, month, startOfWeek);
 
@@ -35,7 +36,9 @@ export function MonthFull({
             key={i}
             cell={cell}
             isToday={cell !== null && cell.date === todayDate}
-            thumbUrl={cell ? (data.get(cell.date)?.thumbUrl ?? null) : null}
+            day={cell ? (data.get(cell.date) ?? null) : null}
+            width={cellW}
+            onOpen={onOpenDay}
           />
         ))}
       </div>

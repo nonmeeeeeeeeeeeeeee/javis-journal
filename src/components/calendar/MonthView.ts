@@ -14,10 +14,12 @@ export type MonthViewProps = {
   startOfWeek: number;
   /** `todayISO()` when the displayed month is the current real month, else null. */
   todayDate: string | null;
-  /** Reactive `YYYY-MM-DD` -> day content (top stamp + resolved thumb). */
+  /** Reactive `YYYY-MM-DD` -> day content (all live stamps + the month's thumbs/aspects). */
   data: Map<string, DayData>;
   /** Fitted day-cell width (px) from the shared fit model. */
   cellW: number;
   /** Measured so the fit model can subtract the weekday-header height. */
   headerRef: RefObject<HTMLDivElement | null>;
+  /** Tap a day: empty → the photo picker; with stamps → the day page. `rect` seeds the FLIP. */
+  onOpenDay: (date: string, rect: DOMRect) => void;
 };

@@ -51,12 +51,12 @@ export type Stamp = {
   entry_id: string;
   user_id: string;
   image_id: string;
+  /** Which shape she cut. Metadata only — the crop is baked into the pixels (ADR-M5). */
   mask_type: MaskType;
-  crop_offset_x: number;
-  crop_offset_y: number;
-  crop_scale: number;
+  /** Stamp center, normalized to the 7:6 day page (0..1). */
   pos_x: number;
   pos_y: number;
+  /** Stamp width as a fraction of the day page's width. */
   scale: number;
   rotation_deg: RotationDeg;
   layer_order: number;

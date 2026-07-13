@@ -1,7 +1,7 @@
 // The ONLY place UI components read Dexie. Mirrors how thumb-url.ts is the sole
 // image-read seam. Everything here is a reactive hook (dexie-react-hooks
-// `useLiveQuery`) so a sync pull or a future day edit re-renders the calendar for
-// free. Week-start *writes* live in ./mutations.ts and go through the M2 outbox.
+// `useLiveQuery`) so a sync pull or a day edit re-renders the calendar for free.
+// Writes live in ./mutations.ts and go through the M2 outbox.
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,55 +9,60 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "@/lib/db";
 import type { Profile, Stamp } from "@/lib/db/types";
-import { getThumbUrls, type ThumbHandle } from "@/lib/image/thumb-url";
+import {
+  getCloseupUrls,
+  getThumbUrls,
+  type ThumbHandle,
+} from "@/lib/image/thumb-url";
 import { monthRange } from "@/lib/calendar/month-grid";
 
-/** One day's representative content for the grid. */
+/**
+ * One day's content for the grid: **all** its live stamps (M6 — the cell renders the day's
+ * faithful mini-composition through the same `stampBoxes` the day page uses, not one
+ * cover-filled thumb). `urls`/`aspects` are the month-wide maps, shared by reference.
+ */
 export type DayData = {
   date: string;
-  /** Top-`layer_order` live (non-deleted) stamp for the day, or null. */
-  stamp: Stamp | null;
-  /** Resolved 256px thumb URL for that stamp, or null (unresolved / none). */
-  thumbUrl: string | null;
+  /** Live stamps for the day, ordered by `layer_order` (back to front). */
+  stamps: Stamp[];
+  /** image_id → resolved 256px thumb URL (month-wide, shared). */
+  urls: Map<string, string>;
+  /** image_id → baked aspect (width / height) (month-wide, shared). */
+  aspects: Map<string, number>;
 };
 
-/**
- * Pick the representative stamp for a day: the max `layer_order` among non-deleted
- * stamps. Ties break on `id` for determinism (Dexie array order isn't guaranteed).
- * Returns null when there is no live stamp. Pure — exported for unit tests.
- */
-export function pickTopStamp(stamps: Stamp[]): Stamp | null {
-  let top: Stamp | null = null;
-  for (const s of stamps) {
-    if (s.deleted_at != null) continue;
-    if (
-      top === null ||
-      s.layer_order > top.layer_order ||
-      (s.layer_order === top.layer_order && s.id > top.id)
-    ) {
-      top = s;
-    }
-  }
-  return top;
+/** Live stamps of a day, back-to-front. Ties on id so Dexie's array order can't leak through. */
+function orderStamps(stamps: Stamp[]): Stamp[] {
+  return stamps
+    .filter((s) => s.deleted_at == null)
+    .sort((a, b) => a.layer_order - b.layer_order || (a.id < b.id ? -1 : 1));
 }
 
+type MonthStamps = {
+  byDate: Map<string, Stamp[]>;
+  /** Every distinct image_id in the month, and its baked aspect. */
+  aspects: Map<string, number>;
+};
+
+const EMPTY_MONTH: MonthStamps = { byDate: new Map(), aspects: new Map() };
+
 /**
- * Reactive read of one month's day content, keyed by `YYYY-MM-DD`. Range-scans
- * `entries` for the month, picks each day's top live stamp, and batch-resolves all
- * their thumbs in a single `getThumbUrls` round-trip. Every `ThumbHandle` created is
- * released when the month unmounts or its stamp set changes (ALG-6, the freeze fix).
+ * Reactive read of one month's day content, keyed by `YYYY-MM-DD`. Range-scans `entries` for
+ * the month, collects each day's live stamps, and batch-resolves every stamp image's thumb in a
+ * single `getThumbUrls` round-trip (≤ 3 × 31 ids — still one call, still 256px thumbs). Every
+ * `ThumbHandle` is released when the month unmounts or its stamp set changes (ALG-6, the freeze
+ * fix).
  */
 export function useMonthData(year: number, month: number): Map<string, DayData> {
   const { start, endExclusive } = monthRange(year, month);
 
-  // Reactive: date -> top live stamp. Re-fires on any entries/stamps mutation.
-  const stampsByDate = useLiveQuery(
-    async (): Promise<Map<string, Stamp>> => {
+  const monthStamps = useLiveQuery(
+    async (): Promise<MonthStamps> => {
       const entries = await db.entries
         .where("entry_date")
         .between(start, endExclusive, true, false)
         .toArray();
-      if (entries.length === 0) return new Map();
+      if (entries.length === 0) return EMPTY_MONTH;
 
       const dateByEntryId = new Map(entries.map((e) => [e.id, e.entry_date]));
       const stamps = await db.stamps
@@ -72,52 +77,131 @@ export function useMonthData(year: number, month: number): Map<string, DayData> 
         else byEntry.set(s.entry_id, [s]);
       }
 
-      const byDate = new Map<string, Stamp>();
+      const byDate = new Map<string, Stamp[]>();
       for (const [entryId, list] of byEntry) {
-        const top = pickTopStamp(list);
         const date = dateByEntryId.get(entryId);
-        if (top && date) byDate.set(date, top);
+        const live = orderStamps(list);
+        if (date && live.length > 0) byDate.set(date, live);
       }
-      return byDate;
+
+      const aspects = await imageAspects(
+        [...new Set([...byDate.values()].flat().map((s) => s.image_id))],
+      );
+      return { byDate, aspects };
     },
     [start, endExclusive],
-    new Map<string, Stamp>(),
+    EMPTY_MONTH,
   );
 
-  // date -> resolved thumb url. Object-URL handles held for disciplined release.
-  const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
+  const urls = useImageUrls(
+    useMemo(
+      () => [...new Set([...monthStamps.byDate.values()].flat().map((s) => s.image_id))],
+      [monthStamps],
+    ),
+    getThumbUrls,
+  );
+
+  return useMemo(() => {
+    const out = new Map<string, DayData>();
+    for (const [date, stamps] of monthStamps.byDate) {
+      out.set(date, { date, stamps, urls, aspects: monthStamps.aspects });
+    }
+    return out;
+  }, [monthStamps, urls]);
+}
+
+/** One open day: its live stamps + their **2048px closeups**, released when the day closes. */
+export type DayView = {
+  stamps: Stamp[];
+  /** image_id → closeup URL. */
+  urls: Map<string, string>;
+  /** image_id → baked aspect (width / height). */
+  aspects: Map<string, number>;
+};
+
+const EMPTY_DAY: DayView = { stamps: [], urls: new Map(), aspects: new Map() };
+
+/**
+ * Reactive read of the open day page. Resolves closeups (not thumbs) — this is the one screen
+ * that shows a stamp at full size — and releases every object URL when the overlay unmounts.
+ * `date === null` (no day open) resolves nothing and holds nothing.
+ */
+export function useDayView(date: string | null): DayView {
+  const query = useLiveQuery(
+    async (): Promise<DayView> => {
+      if (!date) return EMPTY_DAY;
+      const entry = await db.entries.where("entry_date").equals(date).first();
+      if (!entry) return EMPTY_DAY;
+
+      const stamps = orderStamps(
+        await db.stamps.where("entry_id").equals(entry.id).toArray(),
+      );
+      if (stamps.length === 0) return EMPTY_DAY;
+
+      const aspects = await imageAspects([...new Set(stamps.map((s) => s.image_id))]);
+      return { stamps, urls: new Map(), aspects };
+    },
+    [date],
+    EMPTY_DAY,
+  );
+
+  const urls = useImageUrls(
+    useMemo(() => [...new Set(query.stamps.map((s) => s.image_id))], [query]),
+    getCloseupUrls,
+  );
+
+  return useMemo(
+    () => ({ stamps: query.stamps, urls, aspects: query.aspects }),
+    [query, urls],
+  );
+}
+
+/** image_id → baked aspect, from the local `images` rows. Missing dims simply don't appear. */
+async function imageAspects(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const rows = await db.images.bulkGet(ids);
+  for (const row of rows) {
+    if (row?.width && row.height) out.set(row.id, row.width / row.height);
+  }
+  return out;
+}
+
+/**
+ * Resolve a set of image ids to URLs through the image seam, holding the handles and
+ * **releasing every one of them** on unmount or whenever the id set changes. This is ALG-6 —
+ * the fix for the ~20-day freeze — and it is why the object-URL canary stays flat.
+ */
+function useImageUrls(
+  ids: string[],
+  resolve: (ids: string[]) => Promise<Map<string, ThumbHandle>>,
+): Map<string, string> {
+  const [urls, setUrls] = useState<Map<string, string>>(new Map());
   const handlesRef = useRef<ThumbHandle[]>([]);
+  const key = ids.join(",");
 
   useEffect(() => {
     let cancelled = false;
 
-    const imageIdByDate = new Map<string, string>();
-    for (const [date, stamp] of stampsByDate) {
-      imageIdByDate.set(date, stamp.image_id);
-    }
-    const ids = [...new Set(imageIdByDate.values())];
-
-    void getThumbUrls(ids).then((handleMap) => {
+    void resolve(key === "" ? [] : key.split(",")).then((handleMap) => {
       if (cancelled) {
         for (const h of handleMap.values()) h.release();
         return;
       }
-      // Release the previous month/stamp-set's handles before adopting the new set.
       for (const h of handlesRef.current) h.release();
       handlesRef.current = [...handleMap.values()];
 
       const next = new Map<string, string>();
-      for (const [date, imageId] of imageIdByDate) {
-        const handle = handleMap.get(imageId);
-        if (handle) next.set(date, handle.url);
-      }
-      setThumbUrls(next);
+      for (const [id, handle] of handleMap) next.set(id, handle.url);
+      setUrls(next);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [stampsByDate]);
+    // `key` is the id set; `resolve` is a module-level function (stable).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   // Release everything on unmount (the load-bearing ALG-6 obligation).
   useEffect(
@@ -128,13 +212,7 @@ export function useMonthData(year: number, month: number): Map<string, DayData> 
     [],
   );
 
-  return useMemo(() => {
-    const out = new Map<string, DayData>();
-    for (const [date, stamp] of stampsByDate) {
-      out.set(date, { date, stamp, thumbUrl: thumbUrls.get(date) ?? null });
-    }
-    return out;
-  }, [stampsByDate, thumbUrls]);
+  return urls;
 }
 
 /** Normalized view of the local profile row for calendar chrome. */
