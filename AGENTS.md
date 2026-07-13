@@ -76,7 +76,26 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       `stamps.crop_*` dropped (**owner must run `supabase db push`**), Dexie **v4**. Verified by
       158 vitest tests incl. the day-page object-URL canary and the pinch-isolation test; dev
       harness at `/dev/day`. Tier-2 (real-device) is an owner gate.
-- [ ] M7 — Stickers + tray (US-9)
+- [x] **M7 — Stickers + tray (US-9)** — the calendar becomes *hers*. **Headline reversal
+      (ADR-M7, `plans/M7-PLAN.md`): stickers are MONTH-BOUNDED, not a global layer** — a sticker
+      placed on July 2026 lives on July 2026 (`placed_stickers.year_month`); the **tray stays
+      global**. `StickerLayer` renders inside the **day-grid bbox** (`7·cellW × 6·cellH`, aspect
+      derived as `CELL_ASPECT²` = 49/36 — the one rect identical in both views, and the rect M9
+      exports), so a sticker keeps its place across a view switch and scrolls with the close-up
+      grid for free. **Selection is what makes a manipulable layer safe on top of a scrolling,
+      pinchable calendar** (the four isolation cases): unselected, the layer is
+      `pointer-events: none` and a tap on a sticker is handed *back* to the day underneath it
+      (`dateAtGridPoint`); selected, it arms itself and Calendar's pinch no-ops off
+      `stickerSelectedRef`. M6's `DayGestures` was **extracted** into a surface-parameterized
+      `TransformGestures` (`src/lib/gestures/`: machine + hit + layers) that stamps and stickers
+      now share — a mechanical refactor, proven by M6's 166 tests passing untouched — along with
+      the desktop `TransformBar`. `sticker_assets` became a **normal LWW table** (it was pull-only
+      and could never push); the 3 seeded stickers ingest through the M3 pipeline with
+      **deterministic ids** so a second device upserts instead of duplicating. Schema: `year_month`
+      + a seeded-delete trigger (**owner must run `supabase db push`**), Dexie **v5**. Verified by
+      214 vitest tests incl. the sticker object-URL canary (50 months flat, one URL per *distinct
+      asset*) and the four isolation cases; dev harness at `/dev/stickers`. Tier-2 (real-device,
+      incl. the sticker-sharpness knob) is an owner gate.
 - [ ] M8 — Pokémon frames (US-10)
 - [ ] M9 — PNG export (US-12)
 - [ ] M10 — Stability gate + polish + ship (US-13 hard gate, US-14)
@@ -116,10 +135,20 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
 - `src/lib/calendar/` — pure calendar geometry: `month-grid.ts` (ALG-5, today/bounds/date
   helpers), `fit.ts` (shared 7:6 cell-fit model, `CELL_ASPECT`) + `pinch.ts` (the pinch-to-switch
   decision, incl. the M6 pinch-isolation rule). No React, no Dexie.
+- `src/lib/gestures/` — the **shared** direct-manipulation layer (M7): `machine.ts`
+  (`TransformGestures` + the `Surface` its caller injects — one state machine and one set of
+  commit rules for both stamps and stickers), `hit.ts` (rotated-box hit-testing), `layers.ts`
+  (front/back). `src/components/ui/TransformBar.tsx` — the shared desktop `− + ⟲ ⟳` bar.
 - `src/lib/day/` — the day editor's pure layer: `place.ts` (ALG-8 + the single `PLACEMENT`
   constants object + every clamp), `layout.ts` (`stampBoxes` — the one composition function the
-  day page, the calendar cell and the M9 export all share), `hit.ts`, `gestures.ts` (ALG-9).
+  day page, the calendar cell and the M9 export all share), `hit.ts`, `gestures.ts` (the day
+  surface: the 7:6 page).
   No React, no Dexie. `src/components/day/` — `DayPage`, `DayStamp`, `UndoToast`, `AddStampFlow`.
+- `src/lib/sticker/` — the sticker pure layer (M7): `place.ts` (the single `STICKER` constants
+  object, the 49/36 grid box + its clamps, tap-placement + cascade + the 50-per-month cap),
+  `layout.ts` (`stickerBoxes`), `cell.ts` (which day a point lands on — the tap-through rule),
+  `gestures.ts` (the sticker surface), `seed.ts`/`seeds.ts` (the 3 seeded stickers, deterministic
+  ids). `src/components/sticker/` — `StickerLayer`, `StickerTray`.
 - `src/lib/sync/` — debounced sync engine (ALG-3/ALG-4, LWW + tombstones).
 - `src/lib/image/` — image pipeline + stamp cutter (ALG-1/ALG-2). `thumb-url.ts` is the sole
   image-read seam (`getThumbUrls`, ALG-6 object-URL release).

@@ -8,12 +8,16 @@ import {
   currentYearMonth,
   isCurrentMonth,
   todayISO,
+  yearMonthKey,
   type YearMonth,
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
-import { setStartOfWeek } from "@/lib/db/mutations";
+import { placeSticker, setStartOfWeek } from "@/lib/db/mutations";
+import { seedStickers } from "@/lib/sticker/seed";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
 import { DayPage } from "@/components/day/DayPage";
+import { StickerLayer, visibleGridCenter } from "@/components/sticker/StickerLayer";
+import { StickerTray } from "@/components/sticker/StickerTray";
 import { CalendarMenu } from "./CalendarMenu";
 import { MonthCloseUp } from "./MonthCloseUp";
 import { MonthFull } from "./MonthFull";
@@ -63,6 +67,9 @@ export function Calendar() {
   const [openDay, setOpenDay] = useState<OpenDay | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // M7: the tray sheet, and the selected sticker (selection is what arms the sticker layer).
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [selectedSticker, setSelectedSticker] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<FitMetrics>({
     availW: 0,
     availH: 0,
@@ -73,6 +80,10 @@ export function Calendar() {
   const mainRef = useRef<HTMLElement>(null);
   // Read by the pinch handler without re-binding it (pinch isolation, decision 10).
   const dayOpenRef = useRef(false);
+  // M7: the same belt-and-braces, extended by one boolean — while a sticker is selected, a pinch
+  // belongs to the sticker being scaled, never to the calendar behind it.
+  const stickerSelectedRef = useRef(false);
+  const gridRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -148,19 +159,22 @@ export function Calendar() {
     let startDist: number | null = null;
     let fired = false;
 
+    // M7 extends the same check by one boolean: a selected sticker owns the pinch too.
+    const editorOwnsGesture = () => dayOpenRef.current || stickerSelectedRef.current;
+
     const onTouchStart = (e: TouchEvent) => {
-      if (dayOpenRef.current) return;
+      if (editorOwnsGesture()) return;
       if (e.touches.length === 2) {
         startDist = touchDistance(e.touches);
         fired = false;
       }
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (dayOpenRef.current) return;
+      if (editorOwnsGesture()) return;
       if (e.touches.length !== 2 || startDist == null) return;
       e.preventDefault(); // suppress native pinch-zoom while we interpret it
       if (fired) return;
-      const next = pinchDecision(touchDistance(e.touches) / startDist, dayOpenRef.current);
+      const next = pinchDecision(touchDistance(e.touches) / startDist, editorOwnsGesture());
       if (next) {
         setView(next);
         fired = true;
@@ -184,6 +198,16 @@ export function Calendar() {
     dayOpenRef.current = openDay !== null || addingTo !== null;
   }, [openDay, addingTo]);
 
+  useEffect(() => {
+    stickerSelectedRef.current = selectedSticker !== null;
+  }, [selectedSticker]);
+
+  // Seed the 3 personal stickers into the tray (US-9) once we know who she is. Idempotent, and
+  // deliberately un-awaited: it must never hold up the calendar.
+  useEffect(() => {
+    if (profile.userId) void seedStickers(profile.userId);
+  }, [profile.userId]);
+
   // The system back gesture closes the day instead of leaving the app: opening a day pushes a
   // history entry, popstate closes it. (Closing from inside the app pops it back off.)
   useEffect(() => {
@@ -205,6 +229,9 @@ export function Calendar() {
     setView((v) => (v === "full-month" ? "close-up" : "full-month"));
 
   const onOpenDay = (date: string, rect: DOMRect) => {
+    // A day opening takes the stage: a sticker left selected underneath it would keep the layer
+    // armed (and its pinch guard on) behind the overlay.
+    setSelectedSticker(null);
     const day = data.get(date);
     if (!day || day.stamps.length === 0) {
       // US-7, literally: an empty day never shows an empty page — it opens the picker.
@@ -212,6 +239,22 @@ export function Calendar() {
       return;
     }
     setOpenDay({ date, rect });
+  };
+
+  /** Stamp a tray sticker onto the month she is looking at, at the center of what she can see. */
+  const onPickSticker = async (asset: { id: string; image_id: string }) => {
+    const grid = gridRef.current;
+    setTrayOpen(false);
+    if (!grid) return;
+    const placed = await placeSticker(
+      yearMonthKey(year, month),
+      asset.image_id,
+      asset.id,
+      visibleGridCenter(grid),
+    );
+    // It arrives SELECTED — the same beat as a freshly cut stamp: she just placed it, it is the
+    // thing she is most likely to nudge, and it teaches the selection model with no tutorial.
+    if (placed) setSelectedSticker(placed.id);
   };
 
   const viewProps: MonthViewProps = {
@@ -223,6 +266,18 @@ export function Calendar() {
     cellW,
     headerRef,
     onOpenDay,
+    gridRef,
+    stickerLayer: (
+      <StickerLayer
+        year={year}
+        month={month}
+        startOfWeek={profile.startOfWeek}
+        gridW={cellW * 7}
+        selected={selectedSticker}
+        onSelect={setSelectedSticker}
+        onOpenDay={(date) => onOpenDay(date, cellRect(date) ?? new DOMRect())}
+      />
+    ),
   };
 
   return (
@@ -230,7 +285,7 @@ export function Calendar() {
       ref={mainRef}
       className="relative h-svh w-screen overflow-hidden bg-page [touch-action:none]"
     >
-      <TopBar onMenu={() => setMenuOpen(true)} />
+      <TopBar onMenu={() => setMenuOpen(true)} onStickers={() => setTrayOpen(true)} />
 
       <div
         ref={containerRef}
@@ -269,6 +324,13 @@ export function Calendar() {
           onClose={() => setPickerOpen(false)}
           viewed={{ year, month }}
           onPick={(ym) => setYearMonth(ym)}
+        />
+      ) : null}
+
+      {trayOpen ? (
+        <StickerTray
+          onPick={(asset) => void onPickSticker(asset)}
+          onClose={() => setTrayOpen(false)}
         />
       ) : null}
 

@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
 import type { ImageBlobRow } from "@/lib/db/image-types";
-import type { Entry, ImageRow, PlacedSticker, Profile, Stamp } from "@/lib/db/types";
+import type {
+  Entry,
+  ImageRow,
+  PlacedSticker,
+  Profile,
+  Stamp,
+  StickerAsset,
+} from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/browser";
 import { mainPath, stampMainPath, stampThumbPath, thumbPath } from "@/lib/image/storage-paths";
 import {
@@ -12,12 +19,16 @@ import {
 
 export { clearDirty, getPending, markDirty, quarantine } from "./outbox";
 
-type SyncRow = Entry | Stamp | PlacedSticker | Profile;
+type SyncRow = Entry | Stamp | PlacedSticker | StickerAsset | Profile;
 type SupabaseClient = ReturnType<typeof createClient>;
 
+// Order matters: `sticker_assets` flushes BEFORE `placed_stickers`, because a placed sticker's
+// `sticker_asset_id` FK can only resolve on the server once its tray row has landed. (Images
+// already flush before all of these, for the same reason.)
 const LWW_TABLES: SyncTable[] = [
   "entries",
   "stamps",
+  "sticker_assets",
   "placed_stickers",
   "profiles",
 ];
@@ -270,6 +281,8 @@ async function getEntityRow(
       return db.stamps.get(rowId);
     case "placed_stickers":
       return db.placed_stickers.get(rowId);
+    case "sticker_assets":
+      return db.sticker_assets.get(rowId);
     case "profiles":
       return db.profiles.get(rowId);
   }

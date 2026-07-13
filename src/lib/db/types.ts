@@ -65,19 +65,37 @@ export type Stamp = {
   deleted_at: string | null;
 };
 
+/**
+ * One entry in the (global) tray. A normal LWW table since M7: `updated_at` + `deleted_at` put
+ * it on the same footing as every other synced table, so deleting a tray sticker is a soft
+ * delete that propagates — and can't resurrect on the next pull. A `is_seeded` row can never be
+ * tombstoned (the Postgres trigger enforces what the UI merely hides).
+ */
 export type StickerAsset = {
   id: string;
   user_id: string;
   image_id: string;
   is_seeded: boolean;
   created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 };
 
+/**
+ * A sticker stuck to ONE month's calendar (M7 reversal: month-bounded, not a global layer).
+ *
+ * `pos_x`/`pos_y` ∈ [0,1] are the sticker's CENTER as fractions of the **day-grid bounding box**
+ * — the `7·cellW × 6·cellH` rect that exists identically in both calendar views — and `scale` is
+ * its width ÷ the grid's width. That box is the only rect that survives a view switch, and it is
+ * the rect M9's export rasterizes.
+ */
 export type PlacedSticker = {
   id: string;
   user_id: string;
   image_id: string;
   sticker_asset_id: string | null;
+  /** The month this sticker lives on, `YYYY-MM`. It appears on no other month. */
+  year_month: string;
   pos_x: number;
   pos_y: number;
   scale: number;

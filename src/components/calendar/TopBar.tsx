@@ -1,17 +1,24 @@
 "use client";
 
 /**
- * Floating top bar: a sticker button (visible but **inert** in M4 — M7 wires it to
- * the tray) and the 3-dots menu trigger. The sticker glyph is an inline SVG line
- * icon (rounded square with a peeled corner), stroked in `currentColor` so it
- * inherits the `ink` token and matches the 3-dots weight — not the prototype emoji.
+ * Floating top bar: the sticker button (M7 — it opens the tray sheet) and the 3-dots
+ * menu trigger. The sticker glyph is an inline SVG line icon (rounded square with a
+ * peeled corner), stroked in `currentColor` so it inherits the `ink` token and matches
+ * the 3-dots weight — not the prototype emoji.
  */
-export function TopBar({ onMenu }: { onMenu?: () => void }) {
+export function TopBar({
+  onMenu,
+  onStickers,
+}: {
+  onMenu?: () => void;
+  onStickers?: () => void;
+}) {
   return (
     <div className="pointer-events-none absolute inset-x-4 top-3 z-10 flex items-center justify-between">
       <button
         type="button"
         aria-label="Stickers"
+        onClick={onStickers}
         className="pointer-events-auto grid size-11 place-items-center rounded-control border border-line bg-paper text-ink shadow-sm"
       >
         <StickerIcon />

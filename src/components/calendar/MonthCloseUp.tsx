@@ -28,6 +28,8 @@ export function MonthCloseUp({
   cellW,
   headerRef,
   onOpenDay,
+  stickerLayer,
+  gridRef,
 }: MonthViewProps) {
   const rowMajor = monthGrid(year, month, startOfWeek);
   const cells = toColumnMajor(rowMajor);
@@ -62,24 +64,29 @@ export function MonthCloseUp({
           <div ref={headerRef}>
             <WeekdayHeader startOfWeek={startOfWeek} colWidth={cellW} />
           </div>
-          <div
-            className="grid border-l border-t border-line bg-line"
-            style={{
-              gridTemplateRows: "repeat(6, min-content)",
-              gridAutoFlow: "column",
-              gridAutoColumns: `${cellW}px`,
-            }}
-          >
-            {cells.map((cell, i) => (
-              <DayCell
-                key={i}
-                cell={cell}
-                isToday={cell !== null && cell.date === todayDate}
-                day={cell ? (data.get(cell.date) ?? null) : null}
-              width={cellW}
-              onOpen={onOpenDay}
-              />
-            ))}
+          {/* The day-grid box — the same rect as in full-month, so a sticker keeps its place
+              across a view switch. It scrolls inside the scroller, and the layer with it. */}
+          <div ref={gridRef} className="relative">
+            <div
+              className="grid border-l border-t border-line bg-line"
+              style={{
+                gridTemplateRows: "repeat(6, min-content)",
+                gridAutoFlow: "column",
+                gridAutoColumns: `${cellW}px`,
+              }}
+            >
+              {cells.map((cell, i) => (
+                <DayCell
+                  key={i}
+                  cell={cell}
+                  isToday={cell !== null && cell.date === todayDate}
+                  day={cell ? (data.get(cell.date) ?? null) : null}
+                  width={cellW}
+                  onOpen={onOpenDay}
+                />
+              ))}
+            </div>
+            {stickerLayer}
           </div>
         </div>
       </div>
