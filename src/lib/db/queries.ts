@@ -8,7 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "@/lib/db";
-import type { Profile, Stamp } from "@/lib/db/types";
+import type { Profile, SelectedFrame, Stamp } from "@/lib/db/types";
+import { DEFAULT_FRAME } from "@/lib/frames/spec";
 import {
   getCloseupUrls,
   getThumbUrls,
@@ -219,6 +220,8 @@ function useImageUrls(
 export type ProfileView = {
   /** ISO week-start (1 = Mon … 7 = Sun). Defaults to 1 (Mon) until a row exists. */
   startOfWeek: number;
+  /** M8: the chosen Pokémon frame. Defaults to the column's own default until a row exists. */
+  selectedFrame: SelectedFrame;
   /** The row's user_id, or null before the first pull writes a profile row. */
   userId: string | null;
   /** False only during the very first (undefined) live-query tick. */
@@ -226,8 +229,9 @@ export type ProfileView = {
 };
 
 /**
- * Reactive read of the local profile row, defaulting `start_of_week = 1` (Mon) when
- * no row exists yet (first load before pull). Re-fires when sync writes the profile.
+ * Reactive read of the local profile row, defaulting `start_of_week = 1` (Mon) and the frame to
+ * `rse` when no row exists yet (first load before pull). Re-fires when sync writes the profile —
+ * which is how a frame chosen on her phone lands on the laptop.
  */
 export function useProfile(): ProfileView {
   const row = useLiveQuery<Profile | undefined>(
@@ -237,6 +241,7 @@ export function useProfile(): ProfileView {
 
   return {
     startOfWeek: row?.start_of_week ?? 1,
+    selectedFrame: row?.selected_frame ?? DEFAULT_FRAME,
     userId: row?.user_id ?? null,
     loaded: row !== undefined,
   };

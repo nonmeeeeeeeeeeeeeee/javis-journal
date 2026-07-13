@@ -12,6 +12,8 @@ import {
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
 import { setStartOfWeek } from "@/lib/db/mutations";
+import { frameInsets, frameScale } from "@/lib/frames/spec";
+import { frameCss } from "@/lib/frames/style";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
 import { DayPage } from "@/components/day/DayPage";
 import { CalendarMenu } from "./CalendarMenu";
@@ -79,11 +81,27 @@ export function Calendar() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
 
+  // M8: the frame's scale is stepped off the *viewport*, not the container — the container is
+  // already inside the ring, so reading it back would feed the breakpoint its own output.
+  // 0 until mounted, which also keeps SSR and hydration agreeing on "no frame yet".
+  const [viewportW, setViewportW] = useState(0);
+
   const profile = useProfile();
   const data = useMonthData(year, month);
 
   const todayDate = isCurrentMonth(year, month) ? todayISO() : null;
-  const cellW = computeCellW(view, metrics);
+
+  // The frame ring: `ink × scale` per side is all layout pays (the fat corner is drawn, not
+  // reserved — see frameCss), and fit.ts absorbs that into the gutter it already reserved, so
+  // on a phone the grid does not lose a single cell.
+  const framed = viewportW > 0;
+  const scale = frameScale(viewportW);
+  const ring = frameInsets(profile.selectedFrame, scale);
+  const cellW = computeCellW(view, {
+    ...metrics,
+    frameW: framed ? ring.w : 0,
+    frameH: framed ? ring.h : 0,
+  });
 
   // Measure viewport + chrome heights; recompute on resize. ResizeObserver fires an
   // initial callback on observe(), so it also does the first measurement. Re-run on
@@ -102,6 +120,14 @@ export function Calendar() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [view]);
+
+  // Track the viewport for the frame's stepped scale (×2 / ×3 / ×4).
+  useEffect(() => {
+    const onResize = () => setViewportW(window.innerWidth);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Animate each switch (skip the very first render / device-default correction).
   useEffect(() => {
@@ -232,10 +258,18 @@ export function Calendar() {
     >
       <TopBar onMenu={() => setMenuOpen(true)} />
 
+      {/* The frame rings the whole calendar block, in both views. It goes on THIS element
+          because `clientWidth/Height` — what the ResizeObserver below already reads — is the
+          padding box, i.e. already inside the border: the fit model sees the shrunk box for
+          free. A real border (not an overlay) also means the close-up's scroller clips its
+          columns exactly at the ring's inner edge, with no z-index or occlusion logic. */}
       <div
         ref={containerRef}
         className="flex h-full w-full flex-col items-center justify-center"
-        style={{ gap: TITLE_GRID_GAP }}
+        style={{
+          gap: TITLE_GRID_GAP,
+          ...(framed ? frameCss(profile.selectedFrame, scale) : null),
+        }}
       >
         <div ref={titleRef}>
           <MonthTitle

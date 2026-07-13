@@ -51,7 +51,8 @@ export function MonthCloseUp({
   }, [cellW, year, month, startOfWeek, todayDate]);
 
   return (
-    <div className="w-screen max-w-full">
+    // w-full, not w-screen: the scroller must live INSIDE the M8 frame ring, not run under it.
+    <div className="w-full max-w-full">
       {/* Free horizontal scroll (pan-x lets 1-finger scroll while Calendar owns
           pinch); header + grid share the scroller so labels track their columns. */}
       <div
