@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import type { DayData } from "@/lib/db/queries";
 import type { SelectedFrame } from "@/lib/db/types";
@@ -26,4 +26,12 @@ export type MonthViewProps = {
   headerRef: RefObject<HTMLDivElement | null>;
   /** Tap a day: empty → the photo picker; with stamps → the day page. `rect` seeds the FLIP. */
   onOpenDay: (date: string, rect: DOMRect) => void;
+  /**
+   * M7: the month's sticker layer, rendered absolutely inside the **day-grid box** (`7·cellW ×
+   * 6·cellH`) — the one rect that exists identically in both views, which is why a sticker sits
+   * in the same place relative to the calendar in either. Both views just make room for it.
+   */
+  stickerLayer?: ReactNode;
+  /** The day-grid box element, so the tray can drop a sticker at the center of what's visible. */
+  gridRef?: RefObject<HTMLDivElement | null>;
 };

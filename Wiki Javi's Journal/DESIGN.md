@@ -192,8 +192,22 @@ object URL is released when the month unmounts (or its stamp set changes) so mem
 (fixes the ~20-day freeze).
 
 **FLOW-10 — Download PNG (US-12)** — compose the month offscreen at 2× (9-slice frame + grid
-+ thumbs + global stickers, ALG-7), chunked via `requestIdleCallback` so the editor never
++ thumbs + the month's stickers, ALG-7), chunked via `requestIdleCallback` so the editor never
 blocks, then `convertToBlob` → download.
+
+**FLOW-11 — Decorate a month with stickers (US-9; M7)** — the sticker button in the top bar
+opens the **sticker picker as a bottom sheet** *over* the calendar (not a route, not a full
+screen — she needs to see the month she is decorating while she picks), the same overlay posture
+as the month picker and the 3-dots menu. It shows the **global tray** (3 seeded + everything she
+has uploaded) and a leading `＋` upload tile; an upload runs through the M3 pipeline
+(`ingestImage(file, 'sticker')`, PNG alpha preserved). **Tap** a tray sticker → it is placed at
+the center of the *visible* part of the day grid on the **month currently shown**, arrives
+**selected**, and the sheet closes (repeat taps cascade diagonally). Editing then reuses M6's
+model *literally* — the same `TransformGestures` machine: long-press selects, drag / pinch /
+twist (45° on release), ✕ + Undo toast, **one write per gesture**. An **unselected** sticker is
+`pointer-events: none`, so a tap still opens the day underneath it and the calendar's own
+one-finger scroll and pinch-to-switch behave exactly as they do with no stickers at all;
+selection is what makes the layer safe to put on top of a scrolling, pinchable calendar.
 
 ## Backend API Surface
 
@@ -211,12 +225,17 @@ ping. "UPSERT" rows are PK/uniqueness upserts driven by the sync engine.
 | GET | `/stamps?entry_id=in / updated_at=gt` | Day stamps + sync delta | ids / cursor | stamps[] | yes | stamps | US-7, US-8, US-11, US-13 |
 | UPSERT | `/stamps` (batch, on id) | Create/update stamp + transform | stamp[] | stamp[] | yes | stamps | US-6, US-7, US-8, US-11 |
 | PATCH | `/stamps` (soft: set deleted_at) | Delete stamp (undo toast) | id, deleted_at | stamp | yes | stamps | US-8 |
-| GET | `/sticker_assets` | Load reusable tray | — | assets[] | yes | sticker_assets | US-9 |
-| POST | `/sticker_assets` | Add uploaded sticker to tray | asset | asset | yes | sticker_assets | US-9 |
-| DELETE | `/sticker_assets` (guard is_seeded) | Remove tray sticker | id | ok | yes | sticker_assets | US-9 |
-| GET | `/placed_stickers?updated_at=gt` | Global layer + sync delta | cursor | placed[] | yes | placed_stickers | US-9, US-11 |
-| UPSERT | `/placed_stickers` (on id) | Place/move/resize/rotate | placed[] | placed[] | yes | placed_stickers | US-9, US-11 |
+| GET | `/sticker_assets?updated_at=gt` | Load the (global) tray + sync delta | cursor | assets[] | yes | sticker_assets | US-9, US-11 |
+| UPSERT | `/sticker_assets` (on id) | Add an uploaded/seeded sticker to the tray | asset[] | asset[] | yes | sticker_assets | US-9, US-11 |
+| PATCH | `/sticker_assets` (soft: deleted_at) | Remove a tray sticker (DB trigger rejects `is_seeded`) | id, deleted_at | asset | yes | sticker_assets | US-9 |
+| GET | `/placed_stickers?updated_at=gt` | Sticker layer + sync delta | cursor | placed[] | yes | placed_stickers | US-9, US-11 |
+| UPSERT | `/placed_stickers` (on id) | Place/move/resize/rotate (carries `year_month`) | placed[] | placed[] | yes | placed_stickers | US-9, US-11 |
 | PATCH | `/placed_stickers` (soft: deleted_at) | Remove placed sticker | id, deleted_at | placed | yes | placed_stickers | US-9 |
+
+**M7 (`plans/M7-PLAN.md`, the ADR of record):** `sticker_assets` is a **normal LWW table** —
+`updated_at` + `deleted_at`, pushed and pulled like every other table (the old pull-only,
+insert-only special case is gone). `placed_stickers` carries **`year_month`**: stickers are
+**month-bounded**, not a global layer. The **tray** stays global.
 | GET | `/images?id=in.(...) / created_at=gt` | Resolve image_id → storage/thumb paths (sync + 2nd device) | ids / cursor | images[] | yes | images | US-6, US-9, US-11, US-13 |
 | POST | `/images` | Register row after upload | image | image | yes | images | US-6, US-7, US-9, US-13 |
 | GET | `/profiles` | Load settings | — | profile | yes | profiles | US-4, US-10 |
@@ -350,6 +369,14 @@ Notes:
       <img src=handles[day.imageId].url loading="lazy">   # 256px only, never full-res
   onMonthUnmount(m): for h in handles: h.release()        # release every object URL
   ```
+- **M7 (stickers):** the sticker layer obeys the same rule and is **not** an exception to it —
+  stickers are **month-bounded**, so the layer loads exactly the mounted month's stickers and
+  releases their handles on month unmount, exactly like `useMonthData`. It renders **256px
+  thumbs**, not closeups: the sticker layer *is* the month grid, and a user-uploaded sticker can
+  legitimately be a 2048px alpha PNG — twenty of those held live is precisely the freeze. Object
+  URLs are deduped per `image_id`, so 40 placed stickers drawn from 5 tray assets hold **5**
+  object URLs. (If Tier-2 says 256px looks mushy at `MAX_SCALE`, the escape hatch is a one-line
+  switch to `getCloseupUrls` — the resolver is a parameter of `useImageUrls`.)
 - **Complexity / performance:** memory stays ~flat regardless of history length — the hard gate is the simulated 30–60 day long-run test.
 - **Edge cases:** fast scrolling (LRU + lazy decode); missing thumb (fall back to signed Storage URL).
 
@@ -357,7 +384,7 @@ Notes:
 - **Purpose / trigger:** 3-dots → Download PNG (US-12).
 - **Runs on:** client.
 - **Inputs → outputs:** the current month view → a downloaded PNG including frame, stickers, and thumbnails.
-- **Approach:** compose offscreen at 2× — rasterize the 9-slice `border-image` frame onto the canvas, draw the grid + day thumbnails, then the global stickers in calendar coordinates; chunk decode/draw with `requestIdleCallback` so the editor never blocks; `convertToBlob` → download.
+- **Approach:** compose offscreen at 2× — rasterize the 9-slice `border-image` frame onto the canvas, draw the grid + day thumbnails, then the month's stickers in day-grid-bbox coordinates (M7 — month-bounded, and clamped fully inside that same rect, so the export can never clip a sticker the screen showed); chunk decode/draw with `requestIdleCallback` so the editor never blocks; `convertToBlob` → download.
 - **Pseudocode:**
   ```
   exportPNG(month):
@@ -366,7 +393,7 @@ Notes:
     for cell in month.grid:
        await drawThumb(cv, cell.thumbBlob, cell.rect)
        if idleBudgetExceeded(): await nextIdle()   # requestIdleCallback
-    for s in placedStickers: drawSticker(cv, s)     # global calendar coords
+    for s in placedStickers(month): drawSticker(cv, s)   # day-grid-bbox coords (M7)
     download(await cv.convertToBlob({type:'image/png'}))
   ```
 - **Edge cases:** manual 9-slice math for the frame (CSS `border-image` doesn't apply to canvas); large months chunked to stay responsive.

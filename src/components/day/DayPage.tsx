@@ -19,6 +19,7 @@ import { DayGestures, type LiveTransform } from "@/lib/day/gestures";
 import { applyLive, stampBoxes } from "@/lib/day/layout";
 import { PAGE_ASPECT, canPlace, toggleFrontBack } from "@/lib/day/place";
 import { useFinePointer } from "@/lib/ui/pointer";
+import { TransformBar } from "@/components/ui/TransformBar";
 import { DayStamp } from "./DayStamp";
 import { UndoToast } from "./UndoToast";
 
@@ -26,27 +27,6 @@ const FLIP_MS = 250; // matches Calendar's view-switch animation
 const PAGE_INSET = 0.86; // the page fills this much of the viewport; the rest is the peeks
 const DELETE_SIZE = 44; // a full touch target
 const DELETE_OFFSET = 8; // px the ✕ floats OUTSIDE the stamp's corner (never blocks a pinch)
-
-function BarButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="grid h-10 w-10 place-items-center rounded-full text-lg text-ink hover:bg-line-soft"
-    >
-      {children}
-    </button>
-  );
-}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -327,26 +307,13 @@ export function DayPage({
         ) : null}
       </div>
 
-      {/* Desktop only: a mouse cannot pinch or twist, so scale and rotate become buttons. The
-          bar is pinned to the bottom of the page rather than floating by the selection — a
-          floating cluster gets clipped at the page edge and collides with the composition she
-          is arranging. The ✕ stays on the stamp (it works on both platforms). */}
+      {/* Desktop only: a mouse cannot pinch or twist, so scale and rotate become buttons (the
+          shared bar — the sticker layer renders the same one). */}
       {fine && selected ? (
-        <div className="absolute bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-paper px-2 py-1 shadow-sm">
-          <BarButton label="Smaller" onClick={() => gesturesRef.current?.scaleStep(-1)}>
-            −
-          </BarButton>
-          <BarButton label="Bigger" onClick={() => gesturesRef.current?.scaleStep(1)}>
-            +
-          </BarButton>
-          <span className="mx-1 h-6 w-px bg-line" />
-          <BarButton label="Rotate left" onClick={() => gesturesRef.current?.rotateStep(-1)}>
-            ⟲
-          </BarButton>
-          <BarButton label="Rotate right" onClick={() => gesturesRef.current?.rotateStep(1)}>
-            ⟳
-          </BarButton>
-        </div>
+        <TransformBar
+          onScale={(d) => gesturesRef.current?.scaleStep(d)}
+          onRotate={(d) => gesturesRef.current?.rotateStep(d)}
+        />
       ) : null}
 
       {/* The + FAB: bottom-right, and HIDDEN (not disabled) at 3 stamps — a greyed-out button

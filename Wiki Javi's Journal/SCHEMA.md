@@ -76,12 +76,15 @@ erDiagram
     uuid user_id FK
     uuid image_id FK
     boolean is_seeded
+    timestamptz updated_at
+    timestamptz deleted_at
   }
   placed_stickers {
     uuid id PK
     uuid user_id FK
     uuid image_id FK
     uuid sticker_asset_id FK
+    text year_month
     real pos_x
     real pos_y
     real scale
@@ -188,28 +191,38 @@ counts only `deleted_at IS NULL` rows (a soft-deleted stamp frees a slot — see
 ### sticker_assets
 Supports: US-9
 
-The reusable sticker tray: uploaded stickers plus 3–5 seeded personal ones. Seeded assets
-are protected from tray deletion.
+The reusable sticker tray: uploaded stickers plus the 3 seeded personal ones. **The tray is
+global** — she uploads a sticker once and can stamp it onto any month. Since M7 this is a
+normal **LWW table** (`updated_at` + `deleted_at`), so a tray sticker created on her phone
+reaches the server and a deleted one can't resurrect on the next pull. Deletion is a **soft
+delete**, and a **`before update` trigger rejects a tombstone on an `is_seeded` row** — the UI
+hides the affordance, the DB makes it impossible.
 
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | uuid | PK, default `gen_random_uuid()` |  |
 | user_id | uuid | NOT NULL, FK → auth.users(id) ON DELETE CASCADE | Owner. |
-| image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | The sticker image. |
-| is_seeded | boolean | NOT NULL, default `false` | Seeded personal sticker; cannot be deleted from the tray. |
+| image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | The sticker image (PNG, alpha preserved). |
+| is_seeded | boolean | NOT NULL, default `false` | Seeded personal sticker; **cannot** be tombstoned (trigger). |
 | created_at | timestamptz | NOT NULL, default `now()` |  |
+| updated_at | timestamptz | NOT NULL, default `now()` | Client-authored, drives LWW per element (M7). |
+| deleted_at | timestamptz |  | Nullable tombstone (NULL = live); removes it from the tray (M7). |
 
 ### placed_stickers
 Supports: US-9, US-11
 
-Instances of stickers on the single global calendar layer, shown across every month, in
-calendar coordinates. Each instance is **self-contained**: it renders from its own
-`image_id`, so deleting the source sticker from the tray never removes placed instances.
+Instances of stickers stuck to **one month's** calendar. **M7 reversal** (`plans/M7-PLAN.md`
+is the ADR of record): stickers are **month-bounded**, not a single global layer floating
+across every month — `year_month` says which month a sticker lives on, and it appears on no
+other. Each instance is **self-contained**: it renders from its own `image_id`, so deleting
+the source sticker from the tray never removes placed instances.
 
-Positions are stored as fractions (0–1) of the **full-month grid bounding box** (the rect
-enclosing the day cells, inside the frame) and `scale` normalized to grid width, so an
-instance lands in the same spot across the phone close-up, the full-month grid, and the 2×
-PNG export.
+Positions are stored as fractions (0–1) of the **day-grid bounding box** — the `7·cellW × 6·cellH`
+rect enclosing the day cells, which exists identically in the close-up and the full-month view —
+with `scale` normalized to grid width. That is the one rect that survives a view switch, and the
+rect M9's PNG export rasterizes, so an instance lands in the same spot in all three. A sticker is
+clamped **fully inside** that box at every rotation (no overhang, or the export would clip what
+the screen shows).
 
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
@@ -217,8 +230,9 @@ PNG export.
 | user_id | uuid | NOT NULL, FK → auth.users(id) ON DELETE CASCADE | Denormalized owner (RLS + sync). |
 | image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | Renders independently of the tray asset. |
 | sticker_asset_id | uuid | FK → sticker_assets(id) ON DELETE SET NULL | Nullable provenance; deleting the tray sticker nulls this, keeps the instance. |
-| pos_x | real | NOT NULL, default `0` | Global calendar X (fraction of the grid bbox). |
-| pos_y | real | NOT NULL, default `0` | Global calendar Y (fraction of the grid bbox). |
+| year_month | text | NOT NULL, CHECK `~ '^\d{4}-\d{2}$'` | **The month it lives on** (`'2026-07'`) — M7. |
+| pos_x | real | NOT NULL, default `0` | Center X (fraction of the day-grid bbox width). |
+| pos_y | real | NOT NULL, default `0` | Center Y (fraction of the day-grid bbox height). |
 | scale | real | NOT NULL, default `1`, CHECK `> 0` | Size (normalized to grid width). |
 | rotation_deg | smallint | NOT NULL, default `0`, CHECK in (0,45,…,315) | 45°-snapped rotation. |
 | layer_order | int | NOT NULL, default `0` | Explicit numeric front/back (same domain as `stamps.layer_order`). |
@@ -264,9 +278,12 @@ PNG export.
   stamps and the per-day thumbnails for the month grid (US-7, US-8, US-13).
 - `stamps(user_id, updated_at)` — incremental sync delta pulls; intentionally returns
   tombstoned rows (a delete bumps `updated_at`) so the client can apply the removal (US-11).
-- `placed_stickers(user_id, updated_at)` — load the global sticker layer and pull sync
-  deltas, tombstones included (US-9, US-11).
+- `placed_stickers(user_id, updated_at)` — pull sync deltas, tombstones included (US-9, US-11).
+- `placed_stickers(user_id, year_month) WHERE deleted_at IS NULL` — load **one month's** sticker
+  layer (M7); the sticker analogue of `stamps(entry_id) WHERE deleted_at IS NULL`.
 - `sticker_assets(user_id)` — load the reusable tray (US-9).
+- `sticker_assets(user_id, updated_at)` — the tray's sync delta pulls, now that it is a normal
+  LWW table (M7).
 - `images(user_id)` — per-user image lookups.
 
 **Local (Dexie/IndexedDB) indexes** mirror only what the client range-scans:
@@ -274,6 +291,9 @@ PNG export.
   so the calendar reads a month as `entries.where('entry_date').between(start, end)` without a
   full-table scan (US-2, US-3). The server-side uniqueness lives in the Postgres
   `entries(user_id, entry_date)` UNIQUE above; the local index is a non-unique secondary index.
+- `placed_stickers(year_month)` — added by the **M7 Dexie v5 migration**
+  (`placed_stickers: "id, year_month"`) so the sticker layer reads one month's stickers without
+  a full-table scan, and releases them when the month unmounts (US-9, ALG-6).
 
 ## DDL
 
@@ -345,15 +365,33 @@ create table sticker_assets (
   user_id    uuid not null references auth.users(id) on delete cascade,
   image_id   uuid not null references images(id) on delete restrict,
   is_seeded  boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),  -- M7: a normal LWW table
+  deleted_at timestamptz                          -- M7: soft delete from the tray
 );
 create index sticker_assets_user_idx on sticker_assets(user_id);
+create index sticker_assets_sync_idx on sticker_assets(user_id, updated_at);
+
+-- M7: a seeded sticker is part of the gift, not her content — it cannot be tombstoned.
+create or replace function reject_seeded_sticker_delete() returns trigger as $$
+begin
+  if old.is_seeded and old.deleted_at is null and new.deleted_at is not null then
+    raise exception 'A seeded sticker cannot be deleted';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger sticker_assets_seeded_trg
+  before update on sticker_assets
+  for each row execute function reject_seeded_sticker_delete();
 
 create table placed_stickers (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references auth.users(id) on delete cascade,
   image_id         uuid not null references images(id) on delete restrict,
   sticker_asset_id uuid references sticker_assets(id) on delete set null,
+  year_month   text not null check (year_month ~ '^\d{4}-\d{2}$'),  -- M7: month-bounded
   pos_x        real not null default 0,
   pos_y        real not null default 0,
   scale        real not null default 1 check (scale > 0),
@@ -364,7 +402,9 @@ create table placed_stickers (
   updated_at   timestamptz not null default now(),
   deleted_at   timestamptz
 );
-create index placed_stickers_sync_idx on placed_stickers(user_id, updated_at);
+create index placed_stickers_sync_idx  on placed_stickers(user_id, updated_at);
+create index placed_stickers_month_idx on placed_stickers(user_id, year_month)
+  where deleted_at is null;
 
 -- Cap: at most 3 stamps per calendar day
 create or replace function enforce_stamp_cap() returns trigger as $$

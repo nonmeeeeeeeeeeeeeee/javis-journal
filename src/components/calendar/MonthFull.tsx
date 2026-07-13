@@ -22,6 +22,8 @@ export function MonthFull({
   frameScale,
   headerRef,
   onOpenDay,
+  stickerLayer,
+  gridRef,
 }: MonthViewProps) {
   const cells = monthGrid(year, month, startOfWeek);
 
@@ -34,20 +36,24 @@ export function MonthFull({
       <div ref={headerRef}>
         <WeekdayHeader startOfWeek={startOfWeek} colWidth={cellW} />
       </div>
-      <div
-        className="grid border-l border-t border-line bg-line"
-        style={{ gridTemplateColumns: `repeat(7, ${cellW}px)` }}
-      >
-        {cells.map((cell, i) => (
-          <DayCell
-            key={i}
-            cell={cell}
-            isToday={cell !== null && cell.date === todayDate}
-            day={cell ? (data.get(cell.date) ?? null) : null}
-            width={cellW}
-            onOpen={onOpenDay}
-          />
-        ))}
+      {/* The day-grid box: the sticker layer's coordinate box, and M9's export rect. */}
+      <div ref={gridRef} className="relative">
+        <div
+          className="grid border-l border-t border-line bg-line"
+          style={{ gridTemplateColumns: `repeat(7, ${cellW}px)` }}
+        >
+          {cells.map((cell, i) => (
+            <DayCell
+              key={i}
+              cell={cell}
+              isToday={cell !== null && cell.date === todayDate}
+              day={cell ? (data.get(cell.date) ?? null) : null}
+              width={cellW}
+              onOpen={onOpenDay}
+            />
+          ))}
+        </div>
+        {stickerLayer}
       </div>
     </FramedGrid>
   );

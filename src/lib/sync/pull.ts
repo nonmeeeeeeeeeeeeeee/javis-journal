@@ -9,14 +9,23 @@ import type {
 } from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/browser";
 
-type LWWTable = "entries" | "stamps" | "placed_stickers" | "profiles";
+// `sticker_assets` joined this union in M7: it used to be pull-only and insert-only (with no
+// push path at all, so a tray sticker created on her phone never reached the server, and a
+// deleted one resurrected on the next pull). It is now a normal LWW table — the bespoke
+// `pullStickerAssets` special case is gone, and the engine is smaller for it.
+type LWWTable =
+  | "entries"
+  | "stamps"
+  | "placed_stickers"
+  | "sticker_assets"
+  | "profiles";
 type AppendOnlyTable = "images";
-type TrayTable = "sticker_assets";
 
 type LWWRowByTable = {
   entries: Entry;
   stamps: Stamp;
   placed_stickers: PlacedSticker;
+  sticker_assets: StickerAsset;
   profiles: Profile;
 };
 
@@ -75,6 +84,10 @@ async function getLocalLWW<TTable extends LWWTable>(
       return db.placed_stickers.get(rowId) as Promise<
         LWWRowByTable[TTable] | undefined
       >;
+    case "sticker_assets":
+      return db.sticker_assets.get(rowId) as Promise<
+        LWWRowByTable[TTable] | undefined
+      >;
     case "profiles":
       return db.profiles.get(rowId) as Promise<LWWRowByTable[TTable] | undefined>;
   }
@@ -93,6 +106,9 @@ async function putLocalLWW<TTable extends LWWTable>(
       return;
     case "placed_stickers":
       await db.placed_stickers.put(row as PlacedSticker);
+      return;
+    case "sticker_assets":
+      await db.sticker_assets.put(row as StickerAsset);
       return;
     case "profiles":
       await db.profiles.put(row as Profile);
@@ -113,6 +129,9 @@ async function deleteLocalLWW(
       return;
     case "placed_stickers":
       await db.placed_stickers.delete(rowId);
+      return;
+    case "sticker_assets":
+      await db.sticker_assets.delete(rowId);
       return;
     case "profiles":
       await db.profiles.delete(rowId);
@@ -252,37 +271,13 @@ export async function pullAppendOnly<TTable extends AppendOnlyTable>(
   }
 }
 
-async function pullStickerAssets(table: TrayTable = "sticker_assets"): Promise<void> {
-  const supabase = createClient();
-  const userId = await currentUserId();
-  const { data, error } = await supabase
-    .from(table)
-    .select()
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as StickerAsset[];
-
-  for (const remote of rows) {
-    const local = await db.sticker_assets.get(remote.id);
-
-    if (!local) {
-      await db.sticker_assets.put(remote);
-    }
-  }
-}
-
 export async function pullAll(): Promise<void> {
   await Promise.all([
     pullLWW("entries"),
     pullLWW("stamps"),
     pullLWW("placed_stickers"),
+    pullLWW("sticker_assets"),
     pullLWW("profiles"),
     pullAppendOnly("images", "created_at"),
-    pullStickerAssets(),
   ]);
 }

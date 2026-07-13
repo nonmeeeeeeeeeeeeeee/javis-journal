@@ -9,8 +9,10 @@ export function mainPath(uid: string, id: string, kind: ProcessKind): string {
   return `${uid}/${id}.${ext}`;
 }
 
-export function thumbPath(uid: string, id: string): string {
-  return `${uid}/${id}_thumb.jpg`;
+/** A sticker's thumb is PNG (it must keep its alpha — a JPEG thumb renders black); photos JPEG. */
+export function thumbPath(uid: string, id: string, kind: ProcessKind = "photo"): string {
+  const ext = kind === "sticker" ? "png" : "jpg";
+  return `${uid}/${id}_thumb.${ext}`;
 }
 
 // M5 baked stamps (ADR-M5) upload as WebP-alpha (or PNG-alpha fallback), so both the

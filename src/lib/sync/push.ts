@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
 import type { ImageBlobRow } from "@/lib/db/image-types";
-import type { Entry, ImageRow, PlacedSticker, Profile, Stamp } from "@/lib/db/types";
+import type {
+  Entry,
+  ImageRow,
+  PlacedSticker,
+  Profile,
+  Stamp,
+  StickerAsset,
+} from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/browser";
 import { mainPath, stampMainPath, stampThumbPath, thumbPath } from "@/lib/image/storage-paths";
 import {
@@ -12,12 +19,16 @@ import {
 
 export { clearDirty, getPending, markDirty, quarantine } from "./outbox";
 
-type SyncRow = Entry | Stamp | PlacedSticker | Profile;
+type SyncRow = Entry | Stamp | PlacedSticker | StickerAsset | Profile;
 type SupabaseClient = ReturnType<typeof createClient>;
 
+// Order matters: `sticker_assets` flushes BEFORE `placed_stickers`, because a placed sticker's
+// `sticker_asset_id` FK can only resolve on the server once its tray row has landed. (Images
+// already flush before all of these, for the same reason.)
 const LWW_TABLES: SyncTable[] = [
   "entries",
   "stamps",
+  "sticker_assets",
   "placed_stickers",
   "profiles",
 ];
@@ -192,7 +203,9 @@ async function uploadImage(
   kind: ImageBlobRow["kind"],
 ): Promise<void> {
   // A baked stamp (ADR-M5) uploads WebP/PNG-alpha for BOTH closeup and thumb, so its thumb
-  // extension + content-type track the bake mime; photo/sticker thumbs stay JPEG.
+  // extension + content-type track the bake mime. A **sticker**'s thumb is PNG for the same
+  // reason: it has alpha, and a JPEG thumb would render its transparent pixels black in the
+  // sticker layer (which draws from thumbs). Only a photo's thumb is JPEG.
   let main: string;
   let thumb: string;
   let thumbType: string;
@@ -202,8 +215,8 @@ async function uploadImage(
     thumbType = imageRow.mime;
   } else {
     main = mainPath(uid, imageRow.id, kind);
-    thumb = thumbPath(uid, imageRow.id);
-    thumbType = "image/jpeg";
+    thumb = thumbPath(uid, imageRow.id, kind);
+    thumbType = kind === "sticker" ? "image/png" : "image/jpeg";
   }
 
   await uploadObject(supabase, main, mainBlob, imageRow.mime);
@@ -270,6 +283,8 @@ async function getEntityRow(
       return db.stamps.get(rowId);
     case "placed_stickers":
       return db.placed_stickers.get(rowId);
+    case "sticker_assets":
+      return db.sticker_assets.get(rowId);
     case "profiles":
       return db.profiles.get(rowId);
   }
