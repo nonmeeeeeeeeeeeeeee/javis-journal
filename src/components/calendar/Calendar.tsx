@@ -11,7 +11,7 @@ import {
   type YearMonth,
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
-import { setStartOfWeek } from "@/lib/db/mutations";
+import { setSelectedFrame, setStartOfWeek } from "@/lib/db/mutations";
 import { frameInsets, frameScale } from "@/lib/frames/spec";
 import { frameCss } from "@/lib/frames/style";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
@@ -296,6 +296,8 @@ export function Calendar() {
         onChangeMonth={() => setPickerOpen(true)}
         startOfWeek={profile.startOfWeek}
         onSetWeekStart={(value) => void setStartOfWeek(value)}
+        selectedFrame={profile.selectedFrame}
+        onSetFrame={(frame) => void setSelectedFrame(frame)}
       />
 
       {pickerOpen ? (

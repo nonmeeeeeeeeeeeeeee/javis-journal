@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 
+import type { SelectedFrame } from "@/lib/db/types";
+import { FRAMES, FRAME_IDS } from "@/lib/frames/spec";
+import { frameCss } from "@/lib/frames/style";
 import { createClient } from "@/lib/supabase/browser";
 
 /**
- * The 3-dots menu (US-2/US-3/US-4). Four live items in M4:
+ * The 3-dots menu (US-2/US-3/US-4/US-10). Five live items:
  *   • Toggle full-month view   • Change month
- *   • Week starts: Mon / Sun    • Logout
- * Download PNG (M9) and Change frame (M8) are omitted until their milestone — the
- * component is built to be trivially extended. Week-start changes keep the menu open
- * so the re-layout is visible; the other actions close it.
+ *   • Week starts: Mon / Sun    • Frame: 3 swatches (M8)    • Logout
+ * Download PNG (M9) is omitted until its milestone. Week-start and frame changes keep the
+ * menu open so the change is visible behind it; the other actions close it.
  */
 export function CalendarMenu({
   open,
@@ -19,6 +21,8 @@ export function CalendarMenu({
   onChangeMonth,
   startOfWeek,
   onSetWeekStart,
+  selectedFrame,
+  onSetFrame,
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,6 +30,8 @@ export function CalendarMenu({
   onChangeMonth: () => void;
   startOfWeek: number;
   onSetWeekStart: (value: number) => void;
+  selectedFrame: SelectedFrame;
+  onSetFrame: (frame: SelectedFrame) => void;
 }) {
   const [signingOut, setSigningOut] = useState(false);
 
@@ -92,6 +98,47 @@ export function CalendarMenu({
                 }`}
               >
                 {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Divider />
+
+        {/* US-10. Each swatch WEARS its own frame at ×1 — the preview is the real asset through
+            the real CSS path, so there is nothing to keep in sync with the calendar. Tapping
+            keeps the menu open: the month re-frames behind it and she sees it land. */}
+        <div className="px-4 py-3">
+          <span className="text-sm font-semibold text-ink">Frame</span>
+          <div
+            className="mt-2 flex justify-between gap-2"
+            role="radiogroup"
+            aria-label="Calendar frame"
+          >
+            {FRAME_IDS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={selectedFrame === id}
+                aria-label={FRAMES[id].label}
+                onClick={() => onSetFrame(id)}
+                className={`flex flex-col items-center gap-1 rounded-control p-1 transition-colors ${
+                  selectedFrame === id ? "bg-accent-soft" : "hover:bg-accent-soft"
+                }`}
+              >
+                <span
+                  className="block size-11 bg-paper"
+                  style={frameCss(id, 1)}
+                  aria-hidden
+                />
+                <span
+                  className={`text-[10px] font-bold ${
+                    selectedFrame === id ? "text-ink" : "text-muted"
+                  }`}
+                >
+                  {FRAMES[id].label}
+                </span>
               </button>
             ))}
           </div>
