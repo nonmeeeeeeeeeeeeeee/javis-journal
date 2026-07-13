@@ -49,12 +49,19 @@ Also: the frame is a **ring only** (`border-image-slice` with **no `fill`** — 
 shrunk box for free), it shows in **both** views, and `MonthCloseUp` changes `w-screen` → `w-full`
 so the scroller clips at the ring's inner edge instead of running under it.
 
-**Setup:** branch `m8-frames` off `master`. *(It may already exist from the design session, with
-a throwaway `public/frame-mocks.html` on it — delete that file in Task 0; the real harness is
-`/dev/frames` in Task 5.)*
+**Setup — IMPORTANT, read this before touching a file.** M8 has its own **git worktree**:
+
+- **`C:\Dev\javis-journal-m8`** — branch `m8-frames`. **This is your working directory.**
+- `C:\Dev\javis-journal` — branch `m7-stickers`. **That is the M7 session's checkout.** Do not
+  edit it, do not `git checkout` in it, do not `git switch` branches anywhere. The two sessions
+  share one `.git`, and flipping a branch yanks the tree out from under the other session.
+
+**Task 0 is already DONE** (commits `1af27ca`, `f2a48ff`): `scripts/extract-frames.mjs` and the
+three assets in `public/frames/` are committed, and `M8-PLAN.md` records the geometry they
+produced. **Start at Task 1.**
 
 **How to build:** directly, one thread — **do NOT use `/parallel-plan`** (M8 is a straight chain,
-and the codex worktree agents already failed on M2/M3). Work Task 0 → 1 → 2 → 3 → 4 → 5 in order.
+and the codex worktree agents already failed on M2/M3). Work Task 1 → 2 → 3 → 4 → 5 in order.
 
 **Per-task rules:**
 - Package manager is **pnpm** (no npm/yarn, no `package-lock.json`).
@@ -76,19 +83,21 @@ and the codex worktree agents already failed on M2/M3). Work Task 0 → 1 → 2 
 - Commit per task with a conventional message (`feat:`/`chore:`/`fix:`/`docs:`). **Do NOT add a
   `Co-Authored-By` trailer** (repo convention).
 
-**Task 0 (the extractor) has two bugs it must not reintroduce** — both were hit and fixed during
-the grill:
-- The ink-depth scan must measure the **contiguous run inward from each edge**, not "any ink
-  anywhere" — the game's own text inside the box is ink too, and a naive scan reports the whole
-  half-width as border.
-- The mirror must be applied to **both** the ink test **and** the pixel copy, through one shared
-  coordinate map. Mapping only the test (deciding *whether* to write with the flipped pixel, then
-  copying the unflipped one) silently produces a solid block instead of a flipped leaf.
+**The assets already exist — do not re-derive them by hand.** `scripts/extract-frames.mjs` is
+committed, and `node scripts/extract-frames.mjs` regenerates all three sheets from the reference
+screenshots (`C:\Users\olgui\Downloads\calendar frame inspo\`). It prints the geometry table that
+Task 1 copies into `FRAMES`:
 
-Source art: `C:\Users\olgui\Downloads\calendar frame inspo\` — `Frame_11_RSE.png`,
-`Frame_15_HGSS.png`, `Frame_18_HGSS.png`. The plan's decision 10 table pins every measured number
-(box crop, ink insets, slice insets, period 8, palettes, expected sheet size and byte count) —
-your extractor's output should match it. Assets land in `public/frames/` at **220–300 bytes each**.
+```
+frame     ink          slice        sheet    bytes
+rse       6/6/6/6      8/8/8/8      24x24    297
+hgss_15   6/10/6/10    7/16/7/16    40x22    220
+hgss_18   4/11/4/11    7/13/7/13    34x22    253
+```
+
+`ink` drives `border-width`; `slice` drives `border-image-slice` / `-width`; their **difference**
+drives `border-image-outset`. The period is **8** on both axes for all three frames. The script's
+header documents the three traps that were hit while writing it — read them before changing it.
 
 **Verification:**
 - Tier-1 (you): the vitest battery in the plan's Definition of done — the slice/symmetry
