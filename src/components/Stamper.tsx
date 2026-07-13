@@ -334,33 +334,36 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
           {busy ? "cutting…" : "cut"}
         </button>
 
-        {/* The shape cycle lives ON the machine's top bezel — directly above the window whose
-            shape it changes. (It used to float in the page gutters, which on a desktop window
-            stranded it miles from the thing it controls.) */}
-        <div
-          className="absolute z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-paper/85 px-2 py-1 shadow-sm"
-          style={{ left: "50%", top: px(BEZEL_TOP * art.h) }}
-        >
-          <button
-            type="button"
-            aria-label="Previous shape"
-            onClick={() => cycleMask(-1)}
-            className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
+        {/* DESKTOP shape cycle: a chip ON the machine's top bezel, directly above the window
+            whose shape it changes — because a desktop window is wide, and the phone's gutter
+            chevrons would be stranded miles from the thing they control. The gutters themselves
+            are spoken for on desktop (zoom/rotate, below). A phone never renders this. */}
+        {fine ? (
+          <div
+            className="absolute z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-paper/85 px-2 py-1 shadow-sm"
+            style={{ left: "50%", top: px(BEZEL_TOP * art.h) }}
           >
-            ‹
-          </button>
-          <span className="min-w-16 text-center text-xs font-semibold uppercase tracking-widest text-ink">
-            {mask.label}
-          </span>
-          <button
-            type="button"
-            aria-label="Next shape"
-            onClick={() => cycleMask(1)}
-            className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
-          >
-            ›
-          </button>
-        </div>
+            <button
+              type="button"
+              aria-label="Previous shape"
+              onClick={() => cycleMask(-1)}
+              className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
+            >
+              ‹
+            </button>
+            <span className="min-w-16 text-center text-xs font-semibold uppercase tracking-widest text-ink">
+              {mask.label}
+            </span>
+            <button
+              type="button"
+              aria-label="Next shape"
+              onClick={() => cycleMask(1)}
+              className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
 
         {/* The cut stamp emerging from the slot into the drawer — that is what the slot and the
             drawer are FOR. A beat, never a blocker. */}
@@ -379,10 +382,39 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
         ) : null}
       </div>
 
+      {/* PHONE shape cycle: fat chevrons in the side gutters, with the shape's name under the
+          machine. On a narrow phone the gutters collapse onto the machine's own edges — which is
+          exactly where the thumbs already rest — and nothing else competes for them, because the
+          zoom/rotate clusters below are desktop-only. A desktop never renders these (it gets the
+          bezel chip instead). */}
+      {!fine ? (
+        <>
+          <button
+            type="button"
+            aria-label="Previous shape"
+            onClick={() => cycleMask(-1)}
+            className="absolute left-2 top-1/2 z-20 grid h-14 w-14 -translate-y-1/2 place-items-center rounded-full bg-paper/85 text-2xl text-ink shadow-sm"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="Next shape"
+            onClick={() => cycleMask(1)}
+            className="absolute right-2 top-1/2 z-20 grid h-14 w-14 -translate-y-1/2 place-items-center rounded-full bg-paper/85 text-2xl text-ink shadow-sm"
+          >
+            ›
+          </button>
+          <span className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-xs uppercase tracking-widest text-muted">
+            {mask.label}
+          </span>
+        </>
+      ) : null}
+
       {/* Desktop only: a mouse has no second finger, so the pinch (zoom) and the twist (rotate)
           become explicit buttons — otherwise the photo can only be panned and wheel-zoomed, and
           the rotation the cutter is built around is simply unreachable. They live in the side
-          gutters the chevrons just vacated, and a phone never renders them. */}
+          gutters, which on desktop the shape chevrons have vacated for the bezel chip. */}
       {fine && phase === "ready" ? (
         <>
           <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2">
