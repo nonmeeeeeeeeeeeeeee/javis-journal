@@ -1,17 +1,17 @@
-// Hit-testing for the day page (ALG-9). Our own math, deliberately NOT `elementFromPoint`:
-// a baked heart/cloud stamp is a RECTANGLE with transparent corners, so the DOM would let the
-// top stamp's empty corner steal a tap from the stamp visibly underneath it. We inverse-rotate
-// the point into each stamp's local frame and take the highest `layer_order` whose bounding box
-// contains it — bounding-box, not alpha-precise: predictable, and exactly right for the
-// 45°-snapped rectangles the editor produces.
+// Hit-testing for the direct-manipulation surfaces (ALG-9). Our own math, deliberately NOT
+// `elementFromPoint`: a baked heart/cloud stamp — and an alpha PNG sticker — is a RECTANGLE with
+// transparent corners, so the DOM would let the top element's empty corner steal a tap from the
+// element visibly underneath it. We inverse-rotate the point into each element's local frame and
+// take the highest `layer_order` whose bounding box contains it — bounding-box, not alpha-
+// precise: predictable, and exactly right for the 45°-snapped rectangles the editor produces.
 //
-// Pure: no React, no Dexie, no DOM.
+// Generic over `Box` (M7) so the day page's stamps and the calendar's stickers share one
+// hit-tester. Pure: no React, no Dexie, no DOM.
 
-import type { StampBox } from "./layout";
-import type { Point } from "./place";
+import type { Box, Point } from "@/lib/gestures/machine";
 
-/** True iff `p` (page pixels) lies inside this box's rotated rectangle. */
-export function hitsBox(p: Point, box: StampBox): boolean {
+/** True iff `p` (surface pixels) lies inside this box's rotated rectangle. */
+export function hitsBox(p: Point, box: Box): boolean {
   const rad = (box.rot * Math.PI) / 180;
   const dx = p.x - box.cx;
   const dy = p.y - box.cy;
@@ -22,11 +22,12 @@ export function hitsBox(p: Point, box: StampBox): boolean {
 }
 
 /**
- * The stamp a tap lands on: the highest `layer_order` (ties on id, matching `stampBoxes`' own
- * ordering) whose rotated box contains the point. Null on empty page space (→ deselect).
+ * The element a tap lands on: the highest `layer_order` (ties on id, matching the layout
+ * functions' own ordering) whose rotated box contains the point. Null on empty space
+ * (→ deselect).
  */
-export function topElementAt(p: Point, boxes: StampBox[]): StampBox | null {
-  let best: StampBox | null = null;
+export function topElementAt<B extends Box>(p: Point, boxes: B[]): B | null {
+  let best: B | null = null;
   for (const box of boxes) {
     if (!hitsBox(p, box)) continue;
     if (best === null || box.z > best.z || (box.z === best.z && box.id > best.id)) {
