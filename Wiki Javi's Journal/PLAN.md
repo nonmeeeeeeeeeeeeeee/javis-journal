@@ -94,8 +94,16 @@ graph TD
   DOM steal a tap from the stamp visibly underneath.
 - **Max 3 stamps per calendar day** — bounds composition, memory, and hit-testing; keeps
   entries simple and the editor reliable. (An in-app calendar day, not a real day.)
-- **Stickers = one global calendar layer** — the same stickers float across every month;
-  simplest mental model, positioned in calendar coordinates, persistent + synced.
+- ~~**Stickers = one global calendar layer**~~ → **Stickers are MONTH-BOUNDED; the TRAY is
+  global** (reversed in M7 — `plans/M7-PLAN.md` is the ADR of record). A sticker placed on
+  July 2026 appears on July 2026 and nowhere else; she uploads a sticker once and can stamp it
+  onto any month. Each month is its own page. A global layer sounded simpler but wasn't: one
+  sticker would have to look right on twelve grids with different trailing-blank-cell counts,
+  and it would be pinned in memory on every month. Month-bounding makes the coordinates simpler
+  and lets the layer load and release per month, exactly like `useMonthData`. Positions are
+  normalized to the **day-grid bounding box** (`7·cellW × 6·cellH`) — the one rect that survives
+  a close-up ↔ full-month switch, and the rect M9's export rasterizes. **Cost, accepted:** she
+  decorates each month separately.
 - **Rotation snapped to 8 × 45°** — chose over free rotation for both stamps and stickers;
   expressive but avoids continuous-rotation hit-testing / export-math complexity.
 - **Explicit numeric layer-order field** — chose over DOM order for deterministic
@@ -179,13 +187,19 @@ As Javi, I want to arrange up to three stamps on a day via a simple menu, so tha
 - Given a stamp, when she taps it she selects, drags to move, and long-presses to open a menu (Resize · Rotate 45° · Front/Back · Delete).
 - Given a delete from the menu, when confirmed, then a "Deleted — Undo" toast lets her restore it; layer order is a numeric field that syncs.
 
-### US-9 — Global calendar stickers
-As Javi, I want to decorate the whole calendar with my own stickers, so that it feels like mine everywhere.
+### US-9 — Calendar stickers
+As Javi, I want to decorate my calendar with my own stickers, so that it feels like mine.
+
+> **Rewritten in M7** (`plans/M7-PLAN.md`, the ADR of record) on two counts: stickers are
+> **month-bounded**, not a global layer; and editing is **direct manipulation**, not a
+> long-press *menu* (M6 already reversed the menu for stamps — ADR-M6).
 
 **Acceptance criteria:**
-- Given the sticker button, when she uploads an image, then it's saved to her reusable tray and placeable on the calendar.
-- Given a placed sticker, when she interacts, then it lives on a global layer shown on every month, can be moved / resized / rotated-45 via long-press, and freely deleted (except seeded ones).
-- Given she closes and reopens the app, when it loads, then her stickers persist and sync; on day one, 3–5 seeded personal stickers are already in the tray.
+- Given the sticker button, when she taps it, then a tray sheet opens with her stickers; uploading an image saves it to that (global) tray, transparency intact.
+- Given a tray sticker, when she taps it, then it is placed on the **month she is looking at**, selected, and the sheet closes. It appears on that month only.
+- Given a placed sticker, when she long-presses it, then it is selected and can be dragged / pinched / twisted (snapping to 45°) in **both** calendar views, and deleted with an Undo toast. An **unselected** sticker never steals a tap from the day underneath it.
+- Given a seeded tray sticker, when she tries to delete it, then nothing happens (the DB rejects it too). Deleting an **uploaded** tray sticker leaves its already-placed instances alone.
+- Given she closes and reopens the app, when it loads, then her stickers persist and sync; on day one, 3 seeded personal stickers are already in the tray.
 
 ### US-10 — Pokémon frame switching
 As Javi, I want selectable calendar frames, so that the month view feels like mine (a hidden nod).
@@ -236,9 +250,9 @@ Grounded in the annotated Excalidraw mockup at
 
 - **Login (Google)** — must show: a Google sign-in button; denies non-allowlisted emails; owner-override recovery path. Primary action: sign in.
 - **Month close-up (home)** — must show: the current month (whole month pre-rendered), day numbers, per-day stamp thumbnails, sticker button, 3-dots menu. The **fixed edge margin** = the leftmost/rightmost day-square edge is clamped to a fixed distance from the window edge. Primary actions: free-scroll L/R (clamped), tap a day, zoom-out, long-press the month name to change month. Mockup: `Untitled-2026-07-04-2338`.
-- **Full-month view** — must show: the whole month grid (week-start aware) with a fixed margin to the window sides, month + year title, all day numbers, progress thumbnails, applied Pokémon frame, global stickers, ~~Today shortcut~~ (dropped in M4 — see US-3). **On desktop this is the default view**; responsive so it never breaks at desktop sizes. Primary actions: tap a day, zoom-in, long-press month name.
+- **Full-month view** — must show: the whole month grid (week-start aware) with a fixed margin to the window sides, month + year title, all day numbers, progress thumbnails, applied Pokémon frame, the month's stickers, ~~Today shortcut~~ (dropped in M4 — see US-3). **On desktop this is the default view**; responsive so it never breaks at desktop sizes. Primary actions: tap a day, zoom-in, long-press month name.
 - **3-dots menu** — must show: Download PNG, Logout, Toggle full-month view, Change month, Change frame. Primary action: each item (change month is also reachable by long-pressing the month name).
-- **Sticker picker** — must show: reusable tray (3–5 seeded + uploaded), upload button. Primary actions: pick a sticker → add to the global calendar layer; upload a new sticker; delete non-seeded stickers.
+- **Sticker picker** — a **bottom sheet** over the calendar (M7), not a screen: she needs to see the month she is decorating while she picks. Must show: the reusable global tray (3 seeded + uploaded) and a leading `＋` upload tile. Primary actions: tap a sticker → it is placed on **the current month**, selected; upload a new sticker; long-press to delete a non-seeded sticker.
 - **Stamper (cutter) machine** — must show: a skeuomorphic stamp-machine, the photo inside the mask window, ‹ › chevrons to cycle shape, ≥3 cut styles (cloud, spiky, heart) plus the postage frame, pan/zoom/resize/rotate-45 controls, and a confirm/stamp action with a cozy cut animation + sound (US-14). Primary actions: change mask, fit, cut.
 - **Day page (day close-up)** — must show: **no weekday header** — it reads as a close-up of that day **with adjacent days peeking** at the sides/top (sets up a future zoom animation); the day number, up to 3 stamps centered at max size with a margin, and a floating + button (hidden at 3 stamps). Primary actions: tap to select, drag to move, long-press menu (Resize · Rotate 45° · Front/Back · Delete), + add.
 - **Birthday fireworks** — overlay on first open (last-mile, must never compete with editor reliability).
@@ -292,7 +306,7 @@ graph TD
   destructive **baked** WebP-alpha export (ADR-M5).
 - **M6 — Day editor:** US-7, US-8. Place / select / move / resize / rotate-45 / delete,
   undo toast, front-back, +add, 3-stamp cap.
-- **M7 — Stickers + tray:** US-9. Global calendar sticker layer, upload, seeded assets.
+- **M7 — Stickers + tray:** US-9. Per-month sticker layer + global tray, upload, seeded assets.
 - **M8 — Pokémon frames:** US-10. Three 9-slice / `border-image` frames + frame switcher.
 - **M9 — PNG export:** US-12. Render the current view → download.
 - **M10 — Stability gate + polish + ship:** US-13 (hard gate), US-14 (cozy cutter),

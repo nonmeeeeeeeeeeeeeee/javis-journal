@@ -55,6 +55,13 @@ export class JournalDB extends Dexie {
     // No index or data change: M6 is the first writer of `stamps`, so no rows exist. The
     // bump exists so a device that somehow holds a pre-M6 row upgrades cleanly.
     this.version(4).stores({});
+
+    // v5 (M7): stickers are MONTH-BOUNDED (M7-PLAN decision 2), so `placed_stickers` gains a
+    // `year_month` index the sticker layer range-scans, exactly as `entries.entry_date` backs
+    // the calendar's month read. Additive index only — M7 is the first writer, no rows exist.
+    this.version(5).stores({
+      placed_stickers: "id, year_month",
+    });
   }
 }
 
