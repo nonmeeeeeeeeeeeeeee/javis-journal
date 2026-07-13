@@ -12,7 +12,13 @@ export const TITLE_GRID_GAP = 12; // matches the gap-3 between title and calenda
 export const CLOSEUP_DIVISOR = 2.5; // columns visible at rest in close-up
 export const FULL_DIVISOR = 7; // full-month shows all 7 columns
 
-/** Cells keep a fixed 7:6 (width:height) ratio. */
+/**
+ * Cells keep a fixed 7:6 (width:height) ratio — and the M6 day page is that same cell
+ * zoomed, so this one ratio is the coordinate box every stamp is normalized to.
+ */
+export const CELL_ASPECT_RATIO = 7 / 6;
+
+/** The CSS `aspect-ratio` form of {@link CELL_ASPECT_RATIO}. */
 export const CELL_ASPECT = "7 / 6";
 
 export type FitMetrics = {
