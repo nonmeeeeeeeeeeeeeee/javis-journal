@@ -135,10 +135,11 @@ export function StamperHarness() {
     <main className="mx-auto min-h-screen max-w-2xl bg-page p-6 text-ink">
       <h1 className="font-title text-2xl">M5 stamper harness</h1>
       <p className="mt-1 text-sm text-muted">
-        Dev-only. Pick a photo (iPhone HEIC or a large JPEG), frame it behind each mask with
-        pan / zoom / <b>Rotate</b> mode, then <b>Cut</b>. Confirm the bake matches the preview,
-        no blank corner at any rotation, and the upload goes durable. Use “Clear local blobs”
-        to simulate a second device re-resolving via signed URLs.
+        Dev-only. Pick a photo (iPhone HEIC or a large JPEG), frame it in the punch machine&apos;s
+        window — drag to pan, two fingers to pinch-zoom and twist — cycle the mask with ‹ ›, then
+        press the drawer to cut. Confirm the bake matches the preview, no blank corner at any
+        rotation, and the upload goes durable. Use “Clear local blobs” to simulate a second
+        device re-resolving via signed URLs.
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
