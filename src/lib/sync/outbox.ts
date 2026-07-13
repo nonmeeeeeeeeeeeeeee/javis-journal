@@ -7,6 +7,7 @@ export type SyncTable =
   | "entries"
   | "stamps"
   | "placed_stickers"
+  | "sticker_assets"
   | "profiles"
   | "images";
 

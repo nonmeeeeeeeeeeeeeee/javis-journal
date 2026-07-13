@@ -4,8 +4,17 @@
 "use client";
 
 import { db } from "@/lib/db";
-import type { Entry, MaskType, Profile, Stamp } from "@/lib/db/types";
+import type {
+  Entry,
+  MaskType,
+  PlacedSticker,
+  Profile,
+  Stamp,
+  StickerAsset,
+} from "@/lib/db/types";
 import { placeStamp } from "@/lib/day/place";
+import type { Point } from "@/lib/gestures/machine";
+import { placeSticker as placeStickerAt } from "@/lib/sticker/place";
 import { createClient } from "@/lib/supabase/browser";
 import { markDirty, scheduleFlush } from "@/lib/sync/engine";
 import { markDirty as outboxMarkDirty } from "@/lib/sync/outbox";
@@ -195,6 +204,199 @@ export async function restoreStamp(id: string, layerOrder: number): Promise<void
       updated_at: now,
     });
     await outboxMarkDirty("stamps", id, "upsert");
+  });
+  scheduleFlush();
+}
+
+// ---- Stickers (M7, US-9) ------------------------------------------------------------------
+//
+// Two tables, two lifetimes: `sticker_assets` is the GLOBAL tray (upload once, stamp anywhere);
+// `placed_stickers` are instances stuck to ONE month (`year_month`). Every write here is a
+// single write, on commit, through `markDirty` — the same discipline as the stamps above.
+
+/**
+ * Stamp a tray sticker onto a month (US-9). `wanted` is the desired center in normalized grid
+ * coords — the layer passes the center of the *visible* part of the grid, so a tap while scrolled
+ * to the far column doesn't drop the sticker off-screen. Cascades off anything already there.
+ *
+ * Returns null at the 50-per-month cap (nothing is written). Fail-closed: a missing/dimensionless
+ * image row throws before any write.
+ */
+export async function placeSticker(
+  yearMonth: string,
+  imageId: string,
+  stickerAssetId: string | null,
+  wanted: Point,
+): Promise<PlacedSticker | null> {
+  const image = await db.images.get(imageId);
+  if (!image) {
+    throw new DayWriteError(`Cannot place a sticker: image ${imageId} is not on this device.`);
+  }
+  if (!image.width || !image.height) {
+    throw new DayWriteError(`Cannot place a sticker: image ${imageId} has no dimensions.`);
+  }
+  const aspect = image.width / image.height;
+  const userId = image.user_id;
+  const now = new Date().toISOString();
+
+  const sticker = await db.transaction(
+    "rw",
+    db.placed_stickers,
+    db.sync_outbox,
+    async (): Promise<PlacedSticker | null> => {
+      const existing = await db.placed_stickers
+        .where("year_month")
+        .equals(yearMonth)
+        .toArray();
+
+      const placement = placeStickerAt(existing, aspect, wanted);
+      if (!placement) return null; // the 50-cap — write nothing.
+
+      const row: PlacedSticker = {
+        id: crypto.randomUUID(),
+        user_id: userId,
+        image_id: imageId,
+        sticker_asset_id: stickerAssetId,
+        year_month: yearMonth,
+        ...placement,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+      };
+
+      await db.placed_stickers.put(row);
+      await outboxMarkDirty("placed_stickers", row.id, "upsert");
+      return row;
+    },
+  );
+
+  if (sticker) scheduleFlush();
+  return sticker;
+}
+
+/** The transform / layer fields a sticker gesture may write. */
+export type StickerPatch = Partial<
+  Pick<PlacedSticker, "pos_x" | "pos_y" | "scale" | "rotation_deg" | "layer_order">
+>;
+
+/** Commit one sticker gesture — once, on gesture-end. Never per animation frame. */
+export async function updatePlacedSticker(id: string, patch: StickerPatch): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction("rw", db.placed_stickers, db.sync_outbox, async () => {
+    const row = await db.placed_stickers.get(id);
+    if (!row) return;
+    await db.placed_stickers.put({ ...row, ...patch, updated_at: now });
+    await outboxMarkDirty("placed_stickers", id, "upsert");
+  });
+  scheduleFlush();
+}
+
+/**
+ * Optimistic soft-delete of a placed sticker; returns its `layer_order` so Undo restores it **in
+ * place** rather than to the top. (Deleting a placed instance never touches the tray.)
+ */
+export async function deletePlacedSticker(id: string): Promise<number | null> {
+  const now = new Date().toISOString();
+  const layerOrder = await db.transaction(
+    "rw",
+    db.placed_stickers,
+    db.sync_outbox,
+    async (): Promise<number | null> => {
+      const row = await db.placed_stickers.get(id);
+      if (!row || row.deleted_at != null) return null;
+      await db.placed_stickers.put({ ...row, deleted_at: now, updated_at: now });
+      await outboxMarkDirty("placed_stickers", id, "upsert");
+      return row.layer_order;
+    },
+  );
+  if (layerOrder !== null) scheduleFlush();
+  return layerOrder;
+}
+
+/** Undo: clear the tombstone with a NEWER `updated_at` (so it wins by LWW) at its old layer. */
+export async function restorePlacedSticker(id: string, layerOrder: number): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction("rw", db.placed_stickers, db.sync_outbox, async () => {
+    const row = await db.placed_stickers.get(id);
+    if (!row) return;
+    await db.placed_stickers.put({
+      ...row,
+      deleted_at: null,
+      layer_order: layerOrder,
+      updated_at: now,
+    });
+    await outboxMarkDirty("placed_stickers", id, "upsert");
+  });
+  scheduleFlush();
+}
+
+/**
+ * Add an ingested image to the (global) tray. `id` is passed in only by the seeder, which needs
+ * **deterministic** ids so two devices seeding the same sticker upsert one row instead of two;
+ * an upload just mints one.
+ */
+export async function addTrayAsset(
+  imageId: string,
+  options: { id?: string; isSeeded?: boolean } = {},
+): Promise<StickerAsset> {
+  const image = await db.images.get(imageId);
+  if (!image) {
+    throw new DayWriteError(`Cannot add to the tray: image ${imageId} is not on this device.`);
+  }
+  const now = new Date().toISOString();
+
+  const asset: StickerAsset = {
+    id: options.id ?? crypto.randomUUID(),
+    user_id: image.user_id,
+    image_id: imageId,
+    is_seeded: options.isSeeded ?? false,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  };
+
+  await db.transaction("rw", db.sticker_assets, db.sync_outbox, async () => {
+    await db.sticker_assets.put(asset);
+    await outboxMarkDirty("sticker_assets", asset.id, "upsert");
+  });
+  scheduleFlush();
+  return asset;
+}
+
+/**
+ * Remove an uploaded sticker from the tray — a **soft** delete, so it propagates by LWW and
+ * cannot resurrect on the next pull. A **seeded** asset is refused here and refused again by the
+ * Postgres trigger (the UI hides the affordance; the DB makes it impossible). Already-placed
+ * instances are untouched: they render from their own `image_id`.
+ *
+ * Returns false when nothing was written (seeded, missing, or already deleted).
+ */
+export async function deleteTrayAsset(id: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const deleted = await db.transaction(
+    "rw",
+    db.sticker_assets,
+    db.sync_outbox,
+    async (): Promise<boolean> => {
+      const row = await db.sticker_assets.get(id);
+      if (!row || row.is_seeded || row.deleted_at != null) return false;
+      await db.sticker_assets.put({ ...row, deleted_at: now, updated_at: now });
+      await outboxMarkDirty("sticker_assets", id, "upsert");
+      return true;
+    },
+  );
+  if (deleted) scheduleFlush();
+  return deleted;
+}
+
+/** Undo a tray deletion (the same toast the day page uses). */
+export async function restoreTrayAsset(id: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction("rw", db.sticker_assets, db.sync_outbox, async () => {
+    const row = await db.sticker_assets.get(id);
+    if (!row) return;
+    await db.sticker_assets.put({ ...row, deleted_at: null, updated_at: now });
+    await outboxMarkDirty("sticker_assets", id, "upsert");
   });
   scheduleFlush();
 }

@@ -8,13 +8,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "@/lib/db";
-import type { Profile, Stamp } from "@/lib/db/types";
+import type { PlacedSticker, Profile, Stamp, StickerAsset } from "@/lib/db/types";
 import {
   getCloseupUrls,
   getThumbUrls,
   type ThumbHandle,
 } from "@/lib/image/thumb-url";
-import { monthRange } from "@/lib/calendar/month-grid";
+import { monthRange, yearMonthKey } from "@/lib/calendar/month-grid";
 
 /**
  * One day's content for the grid: **all** its live stamps (M6 — the cell renders the day's
@@ -154,6 +154,116 @@ export function useDayView(date: string | null): DayView {
     () => ({ stamps: query.stamps, urls, aspects: query.aspects }),
     [query, urls],
   );
+}
+
+/** One month's sticker layer: its live stickers + the thumbs they draw from. */
+export type MonthStickers = {
+  /** Live stickers on this month, back-to-front. */
+  stickers: PlacedSticker[];
+  /** image_id → resolved 256px thumb URL. */
+  urls: Map<string, string>;
+  /** image_id → aspect (width / height). */
+  aspects: Map<string, number>;
+};
+
+const EMPTY_STICKERS: { stickers: PlacedSticker[]; aspects: Map<string, number> } = {
+  stickers: [],
+  aspects: new Map(),
+};
+
+/**
+ * Reactive read of ONE month's stickers (M7 — stickers are month-bounded, so this is the whole
+ * layer). Range-scans the `year_month` index, resolves every distinct sticker image's **256px
+ * thumb** in one round-trip, and releases every handle when the month unmounts (ALG-6).
+ *
+ * Thumbs, not closeups: the sticker layer *is* the month grid, and an uploaded sticker can be a
+ * 2048px alpha PNG — twenty of those held live is exactly the freeze this rule exists to prevent
+ * (`MAX_SCALE` bounds how soft that can look). The **one open knob** in M7: if a real phone says
+ * they look mushy, swap `getThumbUrls` → `getCloseupUrls` on the line below and nothing else.
+ *
+ * Object URLs are deduped per `image_id` inside `getThumbUrls`, so 40 stickers stamped from 5
+ * tray assets hold 5 object URLs — the canary asserts exactly that.
+ */
+export function useMonthStickers(year: number, month: number): MonthStickers {
+  const ym = yearMonthKey(year, month);
+
+  const query = useLiveQuery(
+    async () => {
+      const rows = await db.placed_stickers.where("year_month").equals(ym).toArray();
+      const stickers = orderStickers(rows);
+      if (stickers.length === 0) return EMPTY_STICKERS;
+
+      const aspects = await imageAspects([
+        ...new Set(stickers.map((s) => s.image_id)),
+      ]);
+      return { stickers, aspects };
+    },
+    [ym],
+    EMPTY_STICKERS,
+  );
+
+  const urls = useImageUrls(
+    useMemo(() => [...new Set(query.stickers.map((s) => s.image_id))], [query]),
+    getThumbUrls,
+  );
+
+  return useMemo(
+    () => ({ stickers: query.stickers, urls, aspects: query.aspects }),
+    [query, urls],
+  );
+}
+
+/** The (global) tray: her sticker assets + their thumbs. */
+export type TrayView = {
+  /** Live tray assets, newest last (the order she added them). */
+  assets: StickerAsset[];
+  urls: Map<string, string>;
+  aspects: Map<string, number>;
+  /** False only during the very first (undefined) live-query tick — the tray's empty state. */
+  loaded: boolean;
+};
+
+const EMPTY_TRAY: { assets: StickerAsset[]; aspects: Map<string, number> } = {
+  assets: [],
+  aspects: new Map(),
+};
+
+/**
+ * Reactive read of the tray. The tray is **global** — she uploads a sticker once and can stamp
+ * it onto any month — so this is not month-scoped. Thumbs, released when the sheet unmounts.
+ */
+export function useTray(): TrayView {
+  const query = useLiveQuery(async () => {
+    const rows = await db.sticker_assets.toArray();
+    const assets = rows
+      .filter((a) => a.deleted_at == null)
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1));
+    const aspects = await imageAspects([...new Set(assets.map((a) => a.image_id))]);
+    return { assets, aspects };
+  }, []);
+
+  const assets = query?.assets ?? EMPTY_TRAY.assets;
+  const urls = useImageUrls(
+    useMemo(() => [...new Set(assets.map((a) => a.image_id))], [assets]),
+    getThumbUrls,
+  );
+
+  return useMemo(
+    () => ({
+      assets,
+      urls,
+      aspects: query?.aspects ?? EMPTY_TRAY.aspects,
+      loaded: query !== undefined,
+    }),
+    [assets, urls, query],
+  );
+}
+
+/** Live stickers, back-to-front. Ties on id so Dexie's array order can't leak through. */
+function orderStickers(stickers: PlacedSticker[]): PlacedSticker[] {
+  return stickers
+    .filter((s) => s.deleted_at == null)
+    .sort((a, b) => a.layer_order - b.layer_order || (a.id < b.id ? -1 : 1));
 }
 
 /** image_id → baked aspect, from the local `images` rows. Missing dims simply don't appear. */

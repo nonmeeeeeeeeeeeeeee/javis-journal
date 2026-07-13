@@ -42,6 +42,14 @@ export function isoDate(year: number, month: number, day: number): string {
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
+/**
+ * The `YYYY-MM` key a month's stickers are filed under (M7 — stickers are month-bounded).
+ * Same shape as the Postgres `year_month` check constraint, and a plain prefix of `isoDate`.
+ */
+export function yearMonthKey(year: number, month: number): string {
+  return `${year}-${pad2(month)}`;
+}
+
 /** Number of days in the given month (month 1-indexed). */
 export function daysInMonth(year: number, month: number): number {
   // Day 0 of the next month == last day of this month.
