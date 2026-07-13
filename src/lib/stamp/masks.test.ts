@@ -47,9 +47,10 @@ test("postage's alpha carries the perforation: OUTWARD scallops, inset so they a
   const d = ds.at(-1)!;
   expect(d).toMatch(/A[\d.]+ [\d.]+ 0 0 1 /); // sweep 1 → the scallops bulge outward
 
-  // A FIXED count per edge (6 across the short edges, 8 down the long ones), so the perforation
-  // reads identically at 256px and at 2048px — a radius-derived count drifts with the box.
-  expect(d.match(/A/g)).toHaveLength(2 * 6 + 2 * 8);
+  // A FIXED count per edge — 6 across the short edges and 8 down the long ones, PLUS one at
+  // each corner (so each edge is tiled by n + 2 chords). Fixed, because a radius-derived count
+  // drifts with the box and reads differently at 256px than at 2048px.
+  expect(d.match(/A/g)).toHaveLength(2 * (6 + 2) + 2 * (8 + 2));
 
   // …and the outline starts one bump in from the box, which is the ONLY reason those outward
   // scallops survive: un-inset, the canvas clips every crest and the stamp degenerates into a
