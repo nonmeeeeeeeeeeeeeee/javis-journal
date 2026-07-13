@@ -45,6 +45,21 @@ import { UndoToast } from "@/components/day/UndoToast";
 const DELETE_SIZE = 40;
 const DELETE_OFFSET = 6;
 
+/**
+ * The layer's own chrome (the ✕, the desktop bar, the Undo toast) lives INSIDE the gesture
+ * surface — unlike the day page's, which sits outside it. So a press on a button would otherwise
+ * bubble into the machine, hit-test as "empty space", and **deselect** on pointer-up… which
+ * lands *before* the click, leaving the click to act on nothing. (That is why rotating with the
+ * keyboard worked while the bar's ⟲ ⟳ did not: the keyboard never goes through the machine.)
+ *
+ * So: chrome swallows its pointer events, and the machine never sees them.
+ */
+const CHROME = {
+  onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+  onPointerMove: (e: React.PointerEvent) => e.stopPropagation(),
+  onPointerUp: (e: React.PointerEvent) => e.stopPropagation(),
+} as const;
+
 export type StickerLayerProps = {
   year: number;
   month: number;
@@ -292,6 +307,7 @@ export function StickerLayer({
         <button
           type="button"
           aria-label="Delete sticker"
+          {...CHROME}
           onClick={() => void onDelete()}
           className="absolute z-30 grid place-items-center rounded-full bg-paper text-base font-bold text-ink shadow-sm"
           style={{
@@ -312,7 +328,7 @@ export function StickerLayer({
       ) : null}
 
       {undo ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50">
+        <div {...CHROME} className="pointer-events-none fixed inset-x-0 bottom-0 z-50">
           <UndoToast
             onUndo={() => {
               void restorePlacedSticker(undo.id, undo.layer_order);
@@ -328,11 +344,13 @@ export function StickerLayer({
           renders — is `fixed` here because the layer scrolls with the close-up grid, and a bar
           that slides off-screen with it would be useless. */}
       {fine && selected ? (
-        <TransformBar
-          onScale={(d) => gesturesRef.current?.scaleStep(d)}
-          onRotate={(d) => gesturesRef.current?.rotateStep(d)}
-          className="pointer-events-auto fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-paper px-2 py-1 shadow-sm"
-        />
+        <div {...CHROME} className="contents">
+          <TransformBar
+            onScale={(d) => gesturesRef.current?.scaleStep(d)}
+            onRotate={(d) => gesturesRef.current?.rotateStep(d)}
+            className="pointer-events-auto fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-paper px-2 py-1 shadow-sm"
+          />
+        </div>
       ) : null}
     </div>
   );
