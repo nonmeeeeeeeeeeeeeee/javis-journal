@@ -56,8 +56,26 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       the Today button** (documented deviation on US-3). Verified by 79 vitest tests incl. an
       object-URL canary; dev harness at `/dev/calendar`. Tier-2 (real-device) is an owner gate.
       Built directly on `m4-calendar` off `ui-design` (no `/parallel-plan`).
-- [ ] M5 — Stamper / cutter (US-6)
-- [ ] M6 — Day editor (US-7, US-8)
+- [x] **M5 — Stamper / cutter** (US-6) — the destructive WebP-alpha bake (ADR-M5): a single
+      render path shared by preview and bake, 4 masks, the rotation-aware no-blank-corner clamp,
+      ingest through the M3 image layer. M6 re-skinned its UI (see below).
+- [x] **M6 — Day editor + punch machine** (US-7, US-8) — the first writer of `entries`/`stamps`.
+      The **day page** is a client overlay inside the Calendar island — the 7:6 calendar cell
+      zoomed (`CELL_ASPECT` reused), FLIP-animated out of the tapped cell, with a `history`
+      back-guard. Editing is **direct manipulation** (ADR-M6 — DESIGN's long-press *menu* is
+      dropped): long-press selects (blue glow), then drag / pinch / twist (45° snap on release,
+      **one write per gesture, on gesture-end**); a short tap on any stamp toggles front/back; a
+      floating ✕ soft-deletes with an Undo toast that restores the original `layer_order`.
+      Placement is ALG-8 with every tunable in one `PLACEMENT` object; hit-testing is our own
+      math (inverse-rotate → bbox → top `layer_order`), because a baked heart's transparent
+      corner would let the DOM steal a tap. The **calendar cell now renders the day's real
+      composition** through the same `stampBoxes()`. M5's placeholder card became the
+      **skeuomorphic punch machine** (`public/stamper/punch.webp`, 50KB — the preview canvas sits
+      *behind* the art's transparent hole; the drawer plate is the press-to-cut surface); its
+      rotate-*mode* toggle and −/+ steppers are retired for two-finger pinch/twist. Schema:
+      `stamps.crop_*` dropped (**owner must run `supabase db push`**), Dexie **v4**. Verified by
+      158 vitest tests incl. the day-page object-URL canary and the pinch-isolation test; dev
+      harness at `/dev/day`. Tier-2 (real-device) is an owner gate.
 - [ ] M7 — Stickers + tray (US-9)
 - [ ] M8 — Pokémon frames (US-10)
 - [ ] M9 — PNG export (US-12)
@@ -92,10 +110,16 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
   `MonthCloseUp`, `MonthFull`, `DayCell`, `MonthTitle`, `WeekdayHeader`, `TopBar`,
   `CalendarMenu`, `MonthPicker`).
 - `src/lib/db/` — Dexie schema + local-first store. **Reads go through `queries.ts`**
-  (`useMonthData`/`useProfile`, the sole component read seam); week-start **writes go through
-  `mutations.ts`** (`markDirty`). Components never call `db.*` directly.
+  (`useMonthData`/`useDayView`/`useProfile`, the sole component read seam); **writes go through
+  `mutations.ts`** (`createStampOnDay`/`updateStamp`/`deleteStamp`/`restoreStamp`/
+  `setStartOfWeek`, all via `markDirty`). Components never call `db.*` directly.
 - `src/lib/calendar/` — pure calendar geometry: `month-grid.ts` (ALG-5, today/bounds/date
-  helpers) + `fit.ts` (shared 7:6 cell-fit model). No React, no Dexie.
+  helpers), `fit.ts` (shared 7:6 cell-fit model, `CELL_ASPECT`) + `pinch.ts` (the pinch-to-switch
+  decision, incl. the M6 pinch-isolation rule). No React, no Dexie.
+- `src/lib/day/` — the day editor's pure layer: `place.ts` (ALG-8 + the single `PLACEMENT`
+  constants object + every clamp), `layout.ts` (`stampBoxes` — the one composition function the
+  day page, the calendar cell and the M9 export all share), `hit.ts`, `gestures.ts` (ALG-9).
+  No React, no Dexie. `src/components/day/` — `DayPage`, `DayStamp`, `UndoToast`, `AddStampFlow`.
 - `src/lib/sync/` — debounced sync engine (ALG-3/ALG-4, LWW + tombstones).
 - `src/lib/image/` — image pipeline + stamp cutter (ALG-1/ALG-2). `thumb-url.ts` is the sole
   image-read seam (`getThumbUrls`, ALG-6 object-URL release).

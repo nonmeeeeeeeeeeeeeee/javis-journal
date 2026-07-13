@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { computeCellW, type CalendarView, type FitMetrics } from "@/lib/calendar/fit";
+import { pinchDecision } from "@/lib/calendar/pinch";
 import {
   currentYearMonth,
   isCurrentMonth,
@@ -25,10 +26,6 @@ const TITLE_GRID_GAP = 12; // matches the gap-3 between title and calendar body
 
 /** The open day page: the date, plus the cell rect the FLIP zoom grows out of (null → instant). */
 export type OpenDay = { date: string; rect: DOMRect | null };
-
-// Pinch thresholds (ratio of current finger distance to gesture-start distance).
-const SPREAD_RATIO = 1.2; // fingers apart → close-up (detail)
-const PINCH_RATIO = 0.83; // fingers together → full-month (overview)
 
 function touchDistance(touches: TouchList): number {
   const a = touches[0];
@@ -163,12 +160,9 @@ export function Calendar() {
       if (e.touches.length !== 2 || startDist == null) return;
       e.preventDefault(); // suppress native pinch-zoom while we interpret it
       if (fired) return;
-      const ratio = touchDistance(e.touches) / startDist;
-      if (ratio > SPREAD_RATIO) {
-        setView("close-up");
-        fired = true;
-      } else if (ratio < PINCH_RATIO) {
-        setView("full-month");
+      const next = pinchDecision(touchDistance(e.touches) / startDist, dayOpenRef.current);
+      if (next) {
+        setView(next);
         fired = true;
       }
     };
