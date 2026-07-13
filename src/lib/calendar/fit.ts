@@ -22,15 +22,29 @@ export const CELL_ASPECT_RATIO = 7 / 6;
 export const CELL_ASPECT = "7 / 6";
 
 export type FitMetrics = {
-  /** Available box width (px). */
+  /** Available box width (px) — the container's *padding* box, i.e. already inside the frame. */
   availW: number;
-  /** Available box height (px). */
+  /** Available box height (px) — likewise inside the frame. */
   availH: number;
   /** Measured month-title height (px). */
   titleH: number;
   /** Measured weekday-header height (px). */
   headerH: number;
+  /** M8: the frame's per-side horizontal ink, px. 0 = no frame. */
+  frameW?: number;
+  /** M8: the frame's per-side vertical ink, px. 0 = no frame. */
+  frameH?: number;
 };
+
+/**
+ * The breathing room still owed *inside* the frame. The gutter is empty space that already
+ * exists, and the M8 frame lives IN it rather than on top of it: the total inset from the
+ * viewport is `max(GUTTER, frameInset)`, never `GUTTER + frameInset`. So a ring thinner than
+ * 24px — which is every frame at phone scale — costs the grid exactly zero cells.
+ */
+function innerGutter(frameInset = 0): number {
+  return Math.max(0, GUTTER - frameInset);
+}
 
 /**
  * Cell width for the given view + metrics. Picks the smaller of the width-bound and
@@ -38,8 +52,8 @@ export type FitMetrics = {
  * binding dimension wins. Floored, never negative.
  */
 export function computeCellW(view: CalendarView, m: FitMetrics): number {
-  const usableW = m.availW - GUTTER * 2;
-  const usableH = m.availH - GUTTER * 2;
+  const usableW = m.availW - innerGutter(m.frameW) * 2;
+  const usableH = m.availH - innerGutter(m.frameH) * 2;
   const overhead = m.titleH + TITLE_GRID_GAP + m.headerH;
   const heightBoundW = ((usableH - overhead) / 6) * (7 / 6);
   const divisor = view === "full-month" ? FULL_DIVISOR : CLOSEUP_DIVISOR;
