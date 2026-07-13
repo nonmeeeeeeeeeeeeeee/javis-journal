@@ -12,11 +12,18 @@ export const SPREAD_RATIO = 1.2; // fingers apart → close-up (detail)
 export const PINCH_RATIO = 0.83; // fingers together → full-month (overview)
 
 /**
- * The view a pinch of `ratio` should switch to, or null for "do nothing" — which is always the
- * answer while a day is open.
+ * The view a pinch of `ratio` should switch to, or null for "do nothing".
+ *
+ * `editorOwnsGesture` is the isolation rule: when something on top of the calendar is being
+ * manipulated — an open day page (M6), or a **selected sticker** (M7) — the pinch belongs to
+ * *that* element, and must never switch the view underneath it. One flag, two callers; it is not
+ * a new mechanism, just one more thing that can own a gesture.
  */
-export function pinchDecision(ratio: number, dayOpen: boolean): CalendarView | null {
-  if (dayOpen) return null;
+export function pinchDecision(
+  ratio: number,
+  editorOwnsGesture: boolean,
+): CalendarView | null {
+  if (editorOwnsGesture) return null;
   if (ratio > SPREAD_RATIO) return "close-up";
   if (ratio < PINCH_RATIO) return "full-month";
   return null;

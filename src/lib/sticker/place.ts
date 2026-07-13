@@ -166,17 +166,6 @@ export function canPlace(stickers: PlacedSticker[]): boolean {
 }
 
 /**
- * Map a point in the grid's PIXEL box to normalized grid coords. The caller (the layer) knows
- * where the grid rect is on screen; this is the only conversion it needs, and it is what makes
- * "place at the center of the VISIBLE part of the grid" (decision 13) a one-liner: hand it the
- * viewport center expressed in grid pixels.
- */
-export function fromGridPixels(p: Point, gridW: number): Point {
-  const w = Math.max(1, gridW);
-  return { x: p.x / w, y: p.y / (w / GRID_ASPECT) };
-}
-
-/**
  * Where a tapped tray sticker lands (decision 13): at `wanted` — which the caller sets to the
  * center of the **visible** part of the grid, so a tap while scrolled to the far column doesn't
  * drop the sticker off-screen and read as "the tap did nothing" — clamped fully inside the grid.
