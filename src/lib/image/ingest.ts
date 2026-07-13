@@ -61,7 +61,7 @@ async function doIngest(file: File, kind: ProcessKind, forcedId?: string): Promi
     id,
     user_id: uid,
     storage_path: mainPath(uid, id, kind),
-    thumb_path: thumbPath(uid, id),
+    thumb_path: thumbPath(uid, id, kind),
     width: processed.width,
     height: processed.height,
     mime: kind === "sticker" ? "image/png" : "image/jpeg",

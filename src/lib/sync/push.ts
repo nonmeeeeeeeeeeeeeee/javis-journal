@@ -203,7 +203,9 @@ async function uploadImage(
   kind: ImageBlobRow["kind"],
 ): Promise<void> {
   // A baked stamp (ADR-M5) uploads WebP/PNG-alpha for BOTH closeup and thumb, so its thumb
-  // extension + content-type track the bake mime; photo/sticker thumbs stay JPEG.
+  // extension + content-type track the bake mime. A **sticker**'s thumb is PNG for the same
+  // reason: it has alpha, and a JPEG thumb would render its transparent pixels black in the
+  // sticker layer (which draws from thumbs). Only a photo's thumb is JPEG.
   let main: string;
   let thumb: string;
   let thumbType: string;
@@ -213,8 +215,8 @@ async function uploadImage(
     thumbType = imageRow.mime;
   } else {
     main = mainPath(uid, imageRow.id, kind);
-    thumb = thumbPath(uid, imageRow.id);
-    thumbType = "image/jpeg";
+    thumb = thumbPath(uid, imageRow.id, kind);
+    thumbType = kind === "sticker" ? "image/png" : "image/jpeg";
   }
 
   await uploadObject(supabase, main, mainBlob, imageRow.mime);

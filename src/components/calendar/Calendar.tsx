@@ -14,6 +14,7 @@ import {
 import { useMonthData, useProfile } from "@/lib/db/queries";
 import { placeSticker, setStartOfWeek } from "@/lib/db/mutations";
 import { seedStickers } from "@/lib/sticker/seed";
+import { repairStickerThumbs } from "@/lib/image/repair-sticker-thumbs";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
 import { DayPage } from "@/components/day/DayPage";
 import { StickerLayer, visibleGridCenter } from "@/components/sticker/StickerLayer";
@@ -70,6 +71,8 @@ export function Calendar() {
   // M7: the tray sheet, and the selected sticker (selection is what arms the sticker layer).
   const [trayOpen, setTrayOpen] = useState(false);
   const [selectedSticker, setSelectedSticker] = useState<string | null>(null);
+  // Bumped once the sticker-thumb repair lands, to remount the layer onto the fixed thumbs.
+  const [stickerEpoch, setStickerEpoch] = useState(0);
   const [metrics, setMetrics] = useState<FitMetrics>({
     availW: 0,
     availH: 0,
@@ -204,8 +207,18 @@ export function Calendar() {
 
   // Seed the 3 personal stickers into the tray (US-9) once we know who she is. Idempotent, and
   // deliberately un-awaited: it must never hold up the calendar.
+  //
+  // The repair first: stickers ingested before the alpha fix hold a JPEG thumb, which renders
+  // their transparent pixels black. It re-encodes them to PNG in place; `stickerEpoch` then
+  // remounts the layer so the corrected thumbs are re-resolved (the id set didn't change, so the
+  // URL cache would otherwise happily keep serving the black ones).
   useEffect(() => {
-    if (profile.userId) void seedStickers(profile.userId);
+    if (!profile.userId) return;
+    void repairStickerThumbs()
+      .then(() => setStickerEpoch((n) => n + 1))
+      .finally(() => {
+        if (profile.userId) void seedStickers(profile.userId);
+      });
   }, [profile.userId]);
 
   // The system back gesture closes the day instead of leaving the app: opening a day pushes a
@@ -269,6 +282,7 @@ export function Calendar() {
     gridRef,
     stickerLayer: (
       <StickerLayer
+        key={stickerEpoch}
         year={year}
         month={month}
         startOfWeek={profile.startOfWeek}

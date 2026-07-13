@@ -94,6 +94,19 @@ async function renderTo(
 }
 
 /**
+ * How a 256px thumb is encoded. **A thumb must carry the same alpha its main does.** A sticker
+ * is a transparent PNG and the sticker layer renders from THUMBS (M7), so a JPEG thumb — JPEG
+ * has no alpha channel — composites every transparent pixel to **black**, which is exactly the
+ * bug this exists to prevent. A photo has no alpha to lose and PNG would balloon it, so it keeps
+ * JPEG q0.7.
+ */
+export function thumbEncoding(kind: ProcessKind): { type: string; quality?: number } {
+  return kind === "sticker"
+    ? { type: "image/png" }
+    : { type: "image/jpeg", quality: 0.7 };
+}
+
+/**
  * Decode `source` with EXIF orientation baked (imageOrientation: "from-image"),
  * apply the huge-input decode cap, then produce a ~2048px main blob
  * (JPEG q0.8 for photos, PNG for stickers) and a 256px JPEG thumb.
@@ -127,7 +140,8 @@ export async function processBitmap(source: Blob, kind: ProcessKind): Promise<Pr
     const mainBlob = await renderTo(bitmap, mainDims, mainType, mainQuality);
 
     const tDims = thumbDims(srcW, srcH);
-    const thumbBlob = await renderTo(bitmap, tDims, "image/jpeg", 0.7);
+    const thumb = thumbEncoding(kind);
+    const thumbBlob = await renderTo(bitmap, tDims, thumb.type, thumb.quality);
 
     bitmap.close();
     return { mainBlob, thumbBlob, width: mainDims.width, height: mainDims.height };
