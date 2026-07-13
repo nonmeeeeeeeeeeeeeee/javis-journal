@@ -16,6 +16,12 @@
 
 import { CELL_ASPECT_RATIO } from "@/lib/calendar/fit";
 import type { RotationDeg, Stamp } from "@/lib/db/types";
+import {
+  isTopElement,
+  live,
+  maxLayer,
+  toggleFrontBack as toggle,
+} from "@/lib/gestures/layers";
 
 /** The day page's aspect (width / height) — the calendar cell's, reused, never re-invented. */
 export const PAGE_ASPECT = CELL_ASPECT_RATIO;
@@ -158,19 +164,13 @@ export function snapRotation(deg: number): RotationDeg {
   return snapped as RotationDeg;
 }
 
+// Layer order (front/back) is identical for a stamp and a sticker, so it lives in ONE place
+// since M7 — `src/lib/gestures/layers.ts`. These are the day's doors onto it.
+export { maxLayer, minLayer, bringToFront, sendToBack } from "@/lib/gestures/layers";
+
 /** Live (non-deleted) stamps only — the cap, the cascade, and the layers all count these. */
 export function liveStamps(stamps: Stamp[]): Stamp[] {
-  return stamps.filter((s) => s.deleted_at == null);
-}
-
-export function maxLayer(stamps: Stamp[]): number {
-  const live = liveStamps(stamps);
-  return live.length === 0 ? 0 : Math.max(...live.map((s) => s.layer_order));
-}
-
-export function minLayer(stamps: Stamp[]): number {
-  const live = liveStamps(stamps);
-  return live.length === 0 ? 0 : Math.min(...live.map((s) => s.layer_order));
+  return live(stamps);
 }
 
 /** True iff another stamp may be added to this day (the FAB is hidden when false). */
@@ -215,27 +215,9 @@ export function placeStamp(existing: Stamp[], aspect: number): Placement | null 
   };
 }
 
-/** Tap on a buried stamp → it comes to the front. */
-export function bringToFront(stamps: Stamp[], id: string): number {
-  return maxLayer(stamps.filter((s) => s.id !== id)) + 1;
-}
-
-/** Tap on the top stamp → it goes to the back. */
-export function sendToBack(stamps: Stamp[], id: string): number {
-  return minLayer(stamps.filter((s) => s.id !== id)) - 1;
-}
-
 /** True iff `id` is the front-most live stamp (so a tap should send it to the back). */
 export function isTopStamp(stamps: Stamp[], id: string): boolean {
-  const live = liveStamps(stamps);
-  const target = live.find((s) => s.id === id);
-  if (!target) return false;
-  return live.every(
-    (s) =>
-      s.id === id ||
-      s.layer_order < target.layer_order ||
-      (s.layer_order === target.layer_order && s.id < target.id),
-  );
+  return isTopElement(stamps, id);
 }
 
 /**
@@ -243,5 +225,5 @@ export function isTopStamp(stamps: Stamp[], id: string): boolean {
  * already on top. That toggle is the entire layer-order UI (ALG-9).
  */
 export function toggleFrontBack(stamps: Stamp[], id: string): number {
-  return isTopStamp(stamps, id) ? sendToBack(stamps, id) : bringToFront(stamps, id);
+  return toggle(stamps, id);
 }
