@@ -77,7 +77,23 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       158 vitest tests incl. the day-page object-URL canary and the pinch-isolation test; dev
       harness at `/dev/day`. Tier-2 (real-device) is an owner gate.
 - [ ] M7 — Stickers + tray (US-9)
-- [ ] M8 — Pokémon frames (US-10)
+- [x] **M8 — Pokémon frames (US-10)** — three pixel-faithful 9-slice `border-image` frames
+      (`public/frames/*.png`, **220–300 bytes each**), extracted from Javi's reference
+      screenshots by `scripts/extract-frames.mjs` and switchable from the 3-dots menu.
+      **The frame rings the calendar, not the viewport** — `FramedGrid` wraps the weekday header
+      + 7×6 grid (title outside), so the framed box is *the same rectangle* in full-month, in the
+      close-up scroller (where the ring scrolls with the columns), and in **M9's exported PNG**,
+      which is the whole point of the feature. All geometry lives in one measured constants
+      object (`src/lib/frames/spec.ts`, M6's `PUNCH_WINDOW` lesson) beside `nine-slice.ts` —
+      a pure, DOM-free `nineSliceRects()` that **M9's canvas export imports verbatim**, so the
+      CSS and the canvas cannot drift. The ring is charged **per edge**: left/right/bottom
+      overhang into the 24px `GUTTER` (free), the top edge is paid for (the title is above it) —
+      so **`cellW` on a phone is bit-identical with and without a frame**. `border-image-outset`
+      is **0**: the slice surplus (the fat corner) overhangs *inward* over the transparent mat,
+      never outward off-screen (the plan had this backwards; caught by rendering it). No
+      migration, **no Dexie bump** (stays v4 — M7 is free to take v5): `profiles.selected_frame`
+      already existed and already synced. Verified by 227 vitest tests; dev harness at
+      `/dev/frames`. Tier-2 (real-device) is an owner gate.
 - [ ] M9 — PNG export (US-12)
 - [ ] M10 — Stability gate + polish + ship (US-13 hard gate, US-14)
 
