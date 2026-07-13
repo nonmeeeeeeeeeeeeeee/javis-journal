@@ -222,20 +222,38 @@ What M8 produces:
 
 ---
 
-## Task 0 — Extract the assets  *(leaf; do first)*
+## Task 0 — Extract the assets  ✅ **DONE** — commit `1af27ca`
 **Files:** `scripts/extract-frames.mjs`, `public/frames/{rse,hgss_15,hgss_18}.png`
 
-1. A committed Node script (no new deps — a ~90-line PNG decode/encode over `zlib`): decode each
-   reference, key the game background + interior fill to **alpha 0**, keep only the ink palette,
-   **mirror the left edge onto the right** (decision 4), **solve each slice inset by searching for
-   the period-8 phase** (decision 8), and emit the `(L + 8 + R) × (T + 8 + B)` sheet — corners
-   verbatim, edge tiles = the one period adjacent to each corner, centre cell empty.
-2. Verify each output: dimensions, alpha present, ink-only, symmetric, < 1 KB.
-3. The script is the record of how the pixels were measured; re-running it re-derives the assets.
-   **Two bugs it must not reintroduce** (both hit during the grill): the ink-depth scan must
-   measure the *contiguous run from the edge*, not "any ink anywhere" (the game's own text is ink
-   too), and the mirror must be applied to **both** the ink test and the pixel copy through one
-   shared coordinate map (mapping only the test writes a solid block).
+Already built and committed. The extractor had to be written and run in order to *produce* the
+assets that decisions 4, 5 and 8 were validated against in a browser, so shipping it was free.
+
+`node scripts/extract-frames.mjs` re-derives all three sheets and prints the geometry table.
+Its output matches decision 10 exactly:
+
+```
+frame     ink          slice        sheet    bytes
+rse       6/6/6/6      8/8/8/8      24x24    297
+hgss_15   6/10/6/10    7/16/7/16    40x22    220
+hgss_18   4/11/4/11    7/13/7/13    34x22    253
+```
+
+It decodes each reference (a PNG codec over `zlib` — no new deps), keys the game background +
+interior fill to **alpha 0**, **mirrors the left edge onto the right** (decision 4), **solves each
+slice inset by searching for the period-8 phase** (decision 8), and emits the
+`(L + 8 + R) × (T + 8 + B)` sheet — corners verbatim, edge tiles = the one period adjacent to each
+corner, centre cell empty. It self-checks symmetry, `slice ≥ ink`, and the 1 KB budget, and throws
+on violation.
+
+It is also the record of *how* the pixels were measured. Its header documents the **three traps**
+hit while writing it — read them before changing it: the ink-depth scan must measure the
+*contiguous run inward from an edge* (the game's own text is ink too, so a naive scan reports the
+whole half-width as border); the mirror must go through **one** coordinate map honoured by *both*
+the ink test **and** the pixel copy (mapping only the test writes a solid colour block); and the
+slice inset is **not** the ink thickness — it is grown to the period-8 phase, and the surplus is
+exactly what `border-image-outset` bleeds outward.
+
+**Task 1 begins by copying the printed `ink` / `slice` numbers into `FRAMES`.**
 
 ## Task 1 — The pure frame layer  *(depends on 0 · blocks 2, 3)*
 **Files:** `src/lib/frames/spec.ts`, `src/lib/frames/nine-slice.ts`, `+ .test.ts`
