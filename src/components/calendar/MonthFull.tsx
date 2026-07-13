@@ -2,6 +2,7 @@
 
 import { monthGrid } from "@/lib/calendar/month-grid";
 import { DayCell } from "./DayCell";
+import { FramedGrid } from "./FramedGrid";
 import { WeekdayHeader } from "./WeekdayHeader";
 import type { MonthViewProps } from "./MonthView";
 
@@ -17,6 +18,8 @@ export function MonthFull({
   todayDate,
   data,
   cellW,
+  frame,
+  frameScale,
   headerRef,
   onOpenDay,
   stickerLayer,
@@ -25,7 +28,11 @@ export function MonthFull({
   const cells = monthGrid(year, month, startOfWeek);
 
   return (
-    <div style={{ width: cellW > 0 ? cellW * 7 : undefined }}>
+    <FramedGrid
+      frame={frame}
+      scale={frameScale}
+      width={cellW > 0 ? cellW * 7 : undefined}
+    >
       <div ref={headerRef}>
         <WeekdayHeader startOfWeek={startOfWeek} colWidth={cellW} />
       </div>
@@ -48,6 +55,6 @@ export function MonthFull({
         </div>
         {stickerLayer}
       </div>
-    </div>
+    </FramedGrid>
   );
 }

@@ -30,17 +30,38 @@ export type FitMetrics = {
   titleH: number;
   /** Measured weekday-header height (px). */
   headerH: number;
+  /** M8: the framed box's per-side horizontal inset (ring + mat), px. 0 = no frame. */
+  frameW?: number;
+  /** M8: the framed box's per-side vertical inset (ring + mat), px. 0 = no frame. */
+  frameH?: number;
 };
 
 /**
  * Cell width for the given view + metrics. Picks the smaller of the width-bound and
  * height-bound candidates so the grid always fits without vertical scroll and the
  * binding dimension wins. Floored, never negative.
+ *
+ * The M8 frame wraps the weekday header + grid, and is charged **per edge**, by one rule: a ring
+ * edge that sits at the block's outer boundary may overhang into the GUTTER — which is currently
+ * just empty breathing room — while an edge facing interior chrome must be paid for.
+ *
+ *  • **Left, right and bottom are free.** Those ring edges ARE the block's outer edge, so the
+ *    inset from the viewport becomes `max(GUTTER, frame)`, never `GUTTER + frame`. Every ring is
+ *    ≤ 24px at phone scale, so `cellW` on a phone is bit-identical with and without a frame.
+ *    This is "never fights her", and it is the assertion that would regress silently.
+ *
+ *  • **The top edge is charged.** It is the one ring edge NOT at the boundary — the month title
+ *    sits above it — so there is no gutter there to overhang into, and `frameH` joins the height
+ *    overhead alongside the title and header.
  */
 export function computeCellW(view: CalendarView, m: FitMetrics): number {
-  const usableW = m.availW - GUTTER * 2;
-  const usableH = m.availH - GUTTER * 2;
-  const overhead = m.titleH + TITLE_GRID_GAP + m.headerH;
+  const frameW = m.frameW ?? 0;
+  const frameH = m.frameH ?? 0;
+
+  const usableW = m.availW - Math.max(GUTTER, frameW) * 2;
+  // Top gutter is untouched (it sits above the title); the bottom one absorbs the bottom ring.
+  const usableH = m.availH - GUTTER - Math.max(GUTTER, frameH);
+  const overhead = m.titleH + TITLE_GRID_GAP + m.headerH + frameH;
   const heightBoundW = ((usableH - overhead) / 6) * (7 / 6);
   const divisor = view === "full-month" ? FULL_DIVISOR : CLOSEUP_DIVISOR;
   const widthBoundW = usableW / divisor;

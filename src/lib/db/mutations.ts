@@ -9,6 +9,7 @@ import type {
   MaskType,
   PlacedSticker,
   Profile,
+  SelectedFrame,
   Stamp,
   StickerAsset,
 } from "@/lib/db/types";
@@ -45,6 +46,41 @@ export async function setStartOfWeek(startOfWeek: number): Promise<void> {
         user_id: userId,
         start_of_week: startOfWeek,
         selected_frame: "rse",
+        fireworks_seen: false,
+        created_at: now,
+        updated_at: now,
+      };
+
+  await db.profiles.put(row);
+  await markDirty("profiles", userId, "upsert");
+}
+
+/**
+ * Persist the chosen Pokémon frame (US-10). The same shape as {@link setStartOfWeek}: local
+ * write with a fresh client `updated_at`, then `markDirty` — the M2 engine debounces the push,
+ * LWW resolves it, and the frame lands on her other device. Optimistic by construction: the
+ * calendar re-frames off the local row the instant it is written, with no round-trip.
+ */
+export async function setSelectedFrame(frame: SelectedFrame): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await db.profiles.toCollection().first();
+
+  let userId = existing?.user_id;
+  if (!userId) {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Cannot set the frame without a signed-in user.");
+    userId = user.id;
+  }
+
+  const row: Profile = existing
+    ? { ...existing, selected_frame: frame, updated_at: now }
+    : {
+        user_id: userId,
+        start_of_week: 1,
+        selected_frame: frame,
         fireworks_seen: false,
         created_at: now,
         updated_at: now,

@@ -96,7 +96,23 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       214 vitest tests incl. the sticker object-URL canary (50 months flat, one URL per *distinct
       asset*) and the four isolation cases; dev harness at `/dev/stickers`. Tier-2 (real-device,
       incl. the sticker-sharpness knob) is an owner gate.
-- [ ] M8 — Pokémon frames (US-10)
+- [x] **M8 — Pokémon frames (US-10)** — three pixel-faithful 9-slice `border-image` frames
+      (`public/frames/*.png`, **220–300 bytes each**), extracted from Javi's reference
+      screenshots by `scripts/extract-frames.mjs` and switchable from the 3-dots menu.
+      **The frame rings the calendar, not the viewport** — `FramedGrid` wraps the weekday header
+      + 7×6 grid (title outside), so the framed box is *the same rectangle* in full-month, in the
+      close-up scroller (where the ring scrolls with the columns), and in **M9's exported PNG**,
+      which is the whole point of the feature. All geometry lives in one measured constants
+      object (`src/lib/frames/spec.ts`, M6's `PUNCH_WINDOW` lesson) beside `nine-slice.ts` —
+      a pure, DOM-free `nineSliceRects()` that **M9's canvas export imports verbatim**, so the
+      CSS and the canvas cannot drift. The ring is charged **per edge**: left/right/bottom
+      overhang into the 24px `GUTTER` (free), the top edge is paid for (the title is above it) —
+      so **`cellW` on a phone is bit-identical with and without a frame**. `border-image-outset`
+      is **0**: the slice surplus (the fat corner) overhangs *inward* over the transparent mat,
+      never outward off-screen (the plan had this backwards; caught by rendering it). **No
+      migration and no Dexie bump** (M8 adds neither — the schema stays M7's v5):
+      `profiles.selected_frame` already existed and already synced. Verified by 227 vitest tests
+      (pre-merge); dev harness at `/dev/frames`. Tier-2 (real-device) is an owner gate.
 - [ ] M9 — PNG export (US-12)
 - [ ] M10 — Stability gate + polish + ship (US-13 hard gate, US-14)
 
@@ -131,7 +147,13 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
 - `src/lib/db/` — Dexie schema + local-first store. **Reads go through `queries.ts`**
   (`useMonthData`/`useDayView`/`useProfile`, the sole component read seam); **writes go through
   `mutations.ts`** (`createStampOnDay`/`updateStamp`/`deleteStamp`/`restoreStamp`/
-  `setStartOfWeek`, all via `markDirty`). Components never call `db.*` directly.
+  `setStartOfWeek`/`setSelectedFrame`, all via `markDirty`). Components never call `db.*`
+  directly.
+- `src/lib/frames/` — the M8 frame layer, pure: `spec.ts` (the single `FRAMES` constants object —
+  each frame's measured `ink`/`slice` insets, the stepped ×2/×3/×4 `frameScale`, the `FRAME_MAT`),
+  `nine-slice.ts` (`nineSliceRects` — **the seam M9's canvas export imports**, since CSS
+  `border-image` does not apply to canvas), `style.ts` (`frameCss`). The ring itself is
+  `src/components/calendar/FramedGrid.tsx` (`data-month-frame` — M9's export target).
 - `src/lib/calendar/` — pure calendar geometry: `month-grid.ts` (ALG-5, today/bounds/date
   helpers), `fit.ts` (shared 7:6 cell-fit model, `CELL_ASPECT`) + `pinch.ts` (the pinch-to-switch
   decision, incl. the M6 pinch-isolation rule). No React, no Dexie.

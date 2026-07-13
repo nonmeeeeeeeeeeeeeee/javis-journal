@@ -12,7 +12,8 @@ import {
   type YearMonth,
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
-import { placeSticker, setStartOfWeek } from "@/lib/db/mutations";
+import { placeSticker, setSelectedFrame, setStartOfWeek } from "@/lib/db/mutations";
+import { frameBoxInsets, frameScale } from "@/lib/frames/spec";
 import { seedStickers } from "@/lib/sticker/seed";
 import { repairStickerThumbs } from "@/lib/image/repair-sticker-thumbs";
 import { AddStampFlow } from "@/components/day/AddStampFlow";
@@ -93,11 +94,26 @@ export function Calendar() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
 
+  // M8: the frame's scale is stepped off the *viewport*, not the container — the container is
+  // already inside the ring, so reading it back would feed the breakpoint its own output.
+  // 0 until mounted, which also keeps SSR and hydration agreeing on "no frame yet".
+  const [viewportW, setViewportW] = useState(0);
+
   const profile = useProfile();
   const data = useMonthData(year, month);
 
   const todayDate = isCurrentMonth(year, month) ? todayISO() : null;
-  const cellW = computeCellW(view, metrics);
+
+  // The frame wraps the header + grid inside each month view (FramedGrid), not this container —
+  // so that the framed box is the same rectangle on screen and in the M9 export. All the island
+  // owes it is the stepped scale, and the insets the fit model has to account for.
+  const scale = frameScale(viewportW);
+  const ring = frameBoxInsets(profile.selectedFrame, scale);
+  const cellW = computeCellW(view, {
+    ...metrics,
+    frameW: viewportW > 0 ? ring.w : 0,
+    frameH: viewportW > 0 ? ring.h : 0,
+  });
 
   // Measure viewport + chrome heights; recompute on resize. ResizeObserver fires an
   // initial callback on observe(), so it also does the first measurement. Re-run on
@@ -116,6 +132,14 @@ export function Calendar() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [view]);
+
+  // Track the viewport for the frame's stepped scale (×2 / ×3 / ×4).
+  useEffect(() => {
+    const onResize = () => setViewportW(window.innerWidth);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Animate each switch (skip the very first render / device-default correction).
   useEffect(() => {
@@ -277,6 +301,8 @@ export function Calendar() {
     todayDate,
     data,
     cellW,
+    frame: profile.selectedFrame,
+    frameScale: scale,
     headerRef,
     onOpenDay,
     gridRef,
@@ -331,6 +357,8 @@ export function Calendar() {
         onChangeMonth={() => setPickerOpen(true)}
         startOfWeek={profile.startOfWeek}
         onSetWeekStart={(value) => void setStartOfWeek(value)}
+        selectedFrame={profile.selectedFrame}
+        onSetFrame={(frame) => void setSelectedFrame(frame)}
       />
 
       {pickerOpen ? (

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { computeCellW, GUTTER, TITLE_GRID_GAP } from "./fit";
+import {
+  CELL_ASPECT_RATIO,
+  computeCellW,
+  GUTTER,
+  TITLE_GRID_GAP,
+  type CalendarView,
+} from "./fit";
+import { FRAME_IDS, frameBoxInsets, frameScale } from "@/lib/frames/spec";
 
 describe("computeCellW (fit model)", () => {
   test("phone-portrait: width is the binding dimension (close-up ~2.5 cols)", () => {
@@ -36,5 +43,98 @@ describe("computeCellW (fit model)", () => {
   test("never negative on a tiny/degenerate viewport", () => {
     expect(computeCellW("full-month", { availW: 0, availH: 0, titleH: 40, headerH: 24 })).toBe(0);
     expect(computeCellW("close-up", { availW: 10, availH: 10, titleH: 40, headerH: 24 })).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------- M8: with a frame
+
+const VIEWPORTS = [
+  { name: "phone", w: 390, h: 844 },
+  { name: "tablet", w: 768, h: 1024 },
+  { name: "desktop", w: 1440, h: 900 },
+];
+const VIEWS: CalendarView[] = ["full-month", "close-up"];
+const CHROME = { titleH: 40, headerH: 24 };
+
+/** What the Calendar island hands `computeCellW`: the viewport, plus the framed box's insets. */
+function framed(vw: number, vh: number, frameW: number, frameH: number) {
+  return { availW: vw, availH: vh, frameW, frameH, ...CHROME };
+}
+
+describe("computeCellW with an M8 frame", () => {
+  test("no frame supplied → identical to the pre-M8 model (no regression)", () => {
+    for (const view of VIEWS) {
+      for (const { w, h } of VIEWPORTS) {
+        const bare = { availW: w, availH: h, ...CHROME };
+        expect(computeCellW(view, { ...bare, frameW: 0, frameH: 0 })).toBe(
+          computeCellW(view, bare),
+        );
+      }
+    }
+  });
+
+  test("the frame is FREE on a phone: same cellW as no frame, for all 3 frames", () => {
+    // The "never fights her" assertion, and the one that would regress silently. On a phone the
+    // WIDTH binds in both views, and horizontally the ring lives in the 24px gutter that fit.ts
+    // already reserves as empty space — so the grid does not shrink by a single pixel.
+    const { w, h } = VIEWPORTS[0];
+    const scale = frameScale(w);
+    expect(scale).toBe(2);
+
+    for (const view of VIEWS) {
+      const unframed = computeCellW(view, { availW: w, availH: h, ...CHROME });
+      for (const id of FRAME_IDS) {
+        const { w: fw, h: fh } = frameBoxInsets(id, scale);
+        expect(fw).toBeLessThanOrEqual(GUTTER); // the precondition for the freebie
+        expect(computeCellW(view, framed(w, h, fw, fh))).toBe(unframed);
+      }
+    }
+  });
+
+  test("the framed 7×6 grid still fits, unscrolled, at every viewport × frame × view", () => {
+    for (const { w, h } of VIEWPORTS) {
+      const scale = frameScale(w);
+      for (const id of FRAME_IDS) {
+        const { w: fw, h: fh } = frameBoxInsets(id, scale);
+        const m = framed(w, h, fw, fh);
+
+        for (const view of VIEWS) {
+          const cellW = computeCellW(view, m);
+          expect(cellW).toBeGreaterThan(0);
+
+          // No vertical scroll: the whole physical block — gutter, title, gap, top ring, header,
+          // 6 rows, bottom ring — fits the viewport.
+          const cellH = cellW / CELL_ASPECT_RATIO;
+          const block =
+            GUTTER + m.titleH + TITLE_GRID_GAP + fh + m.headerH + 6 * cellH + fh;
+          expect(block).toBeLessThanOrEqual(m.availH);
+
+          // No horizontal scroll in full-month: the framed box (7 columns + both rings) fits.
+          if (view === "full-month") {
+            expect(7 * cellW + fw * 2).toBeLessThanOrEqual(m.availW);
+          }
+        }
+      }
+    }
+  });
+
+  test("the TOP ring edge is charged — there is no gutter above it, the title is", () => {
+    // Height-bound (desktop full-month). The bottom edge overhangs into the gutter like the
+    // sides do; the top edge cannot, so it costs real height.
+    const bare = { availW: 1440, availH: 900, ...CHROME };
+    expect(computeCellW("full-month", { ...bare, frameH: 20 })).toBeLessThan(
+      computeCellW("full-month", bare),
+    );
+  });
+
+  test("a ring fatter than the gutter starts costing cells (and only then)", () => {
+    const bare = { availW: 390, availH: 844, ...CHROME };
+    // Inside the gutter: free. Past it: the grid pays the difference.
+    expect(computeCellW("close-up", { ...bare, frameW: GUTTER })).toBe(
+      computeCellW("close-up", bare),
+    );
+    expect(computeCellW("close-up", { ...bare, frameW: GUTTER + 10 })).toBeLessThan(
+      computeCellW("close-up", bare),
+    );
   });
 });
