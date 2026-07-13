@@ -1,27 +1,25 @@
-// The 4 shipped stamp masks (decision 4/5): postage · cloud · spiky · heart.
+// The 4 shipped stamp masks (decision 4/5): postage · cloud · star · heart.
 //
 // Each mask is authored as an SVG-path→Path2D alpha, generated for whatever (w, h) the
-// preview or bake needs — crisp anti-aliased edges at any resolution, ~KB of code.
-// `path(w,h)` is the alpha applied via destination-in; `frame(w,h)` (postage only) is a
-// perforated border painted source-over ON TOP of the bake with `frameStyle`.
+// preview or bake needs — crisp anti-aliased edges at any resolution, ~KB of code. `path(w,h)`
+// is the alpha applied via destination-in, and it is the WHOLE stamp: nothing is ever painted
+// on top. (M6 removed postage's white perforated band — the perforation now lives in the alpha,
+// so a stamp is only ever photo pixels and transparency.)
 //
-// IMPORTANT: `new Path2D(...)` is only constructed INSIDE path()/frame(), never at module
-// load — so this module imports cleanly in the node/vitest environment (which has no
-// Path2D). Only the browser preview/bake ever calls these functions.
+// IMPORTANT: `new Path2D(...)` is only constructed INSIDE path(), never at module load — so this
+// module imports cleanly in the node/vitest environment (which has no Path2D). Only the browser
+// preview/bake ever calls these functions.
 
 export type MaskId = "postage" | "cloud" | "spiky" | "heart";
 
 export type StampMask = {
+  /** Stable id — also the persisted `stamps.mask_type`. ("spiky" is the star, historically.) */
   id: MaskId;
   label: string;
   /** Committed intrinsic aspect ratio (width / height). Deterministic bake + window. */
   aspect: number;
   /** Alpha shape filled with destination-in. Full-bleed within the (w,h) box. */
   path: (w: number, h: number) => Path2D;
-  /** Optional overlay painted source-over on top of the bake (postage perforation). */
-  frame?: (w: number, h: number) => Path2D;
-  /** Fill style for `frame` (only meaningful when frame is present). */
-  frameStyle?: string;
 };
 
 const f = (n: number): string => n.toFixed(4);
@@ -40,25 +38,51 @@ function heartPath(w: number, h: number): Path2D {
   return new Path2D(d);
 }
 
-// ---- spiky (aspect 1:1) — a starburst -------------------------------------------------
-function spikyPath(w: number, h: number): Path2D {
-  const spikes = 14;
-  const cx = 0.5 * w;
-  const cy = 0.5 * h;
-  const outerX = 0.49 * w;
-  const outerY = 0.49 * h;
-  const innerX = 0.33 * w;
-  const innerY = 0.33 * h;
+// ---- star (aspect 1:1) — 5 points, tips AND valleys rounded --------------------------
+/**
+ * Round every corner of a closed polygon: at each vertex, cut the corner back along both edges
+ * by `r` and join the two cut points with a quadratic through the vertex. `r` is capped at half
+ * the shorter adjacent edge, so a thin star spike rounds off rather than folding inside out.
+ */
+function roundedPolygon(pts: { x: number; y: number }[], radii: number[]): Path2D {
+  const n = pts.length;
+  const cut = (from: { x: number; y: number }, to: { x: number; y: number }, r: number) => {
+    const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    const t = Math.min(r, len / 2) / len;
+    return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+  };
+
   let d = "";
-  for (let k = 0; k < spikes * 2; k += 1) {
-    const angle = -Math.PI / 2 + (k * Math.PI) / spikes;
-    const rx = k % 2 === 0 ? outerX : innerX;
-    const ry = k % 2 === 0 ? outerY : innerY;
-    const x = cx + rx * Math.cos(angle);
-    const y = cy + ry * Math.sin(angle);
-    d += `${k === 0 ? "M" : "L"}${f(x)} ${f(y)}`;
+  for (let i = 0; i < n; i += 1) {
+    const prev = pts[(i - 1 + n) % n];
+    const cur = pts[i];
+    const next = pts[(i + 1) % n];
+    const a = cut(cur, prev, radii[i]); // step back toward the previous vertex
+    const b = cut(cur, next, radii[i]); // step forward toward the next one
+    d += i === 0 ? `M${f(a.x)} ${f(a.y)}` : `L${f(a.x)} ${f(a.y)}`;
+    d += `Q${f(cur.x)} ${f(cur.y)} ${f(b.x)} ${f(b.y)}`;
   }
   return new Path2D(`${d}Z`);
+}
+
+function starPath(w: number, h: number): Path2D {
+  const points = 5;
+  const cx = 0.5 * w;
+  const cy = 0.52 * h; // a 5-point star's visual center sits below its geometric one
+  const outer = 0.49 * Math.min(w, h);
+  const inner = 0.42 * outer; // the classic sheriff/sticker proportion
+  const size = Math.min(w, h);
+
+  const pts: { x: number; y: number }[] = [];
+  const radii: number[] = [];
+  for (let k = 0; k < points * 2; k += 1) {
+    const angle = -Math.PI / 2 + (k * Math.PI) / points;
+    const r = k % 2 === 0 ? outer : inner;
+    pts.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+    // Tips round generously; valleys round a touch less, so the star stays crisp.
+    radii.push(k % 2 === 0 ? 0.085 * size : 0.055 * size);
+  }
+  return roundedPolygon(pts, radii);
 }
 
 // ---- cloud (aspect 1.4:1) — a scalloped blob ------------------------------------------
@@ -85,58 +109,48 @@ function cloudPath(w: number, h: number): Path2D {
   return new Path2D(`${d}Z`);
 }
 
-// ---- postage (aspect 3:4) — rectangular alpha + perforated frame ----------------------
+// ---- postage (aspect 3:4) — the perforated edge, cut into the ALPHA -------------------
+/**
+ * A stamp silhouette: a rectangle whose edges are a chain of OUTWARD semicircular scallops —
+ * the classic torn-from-the-sheet perforation. (Until M6 this was a plain full-bleed rectangle
+ * with a white perforated band painted on top; the band bled white onto the journal page, so
+ * the perforation moved into the alpha and the overlay pass is gone.)
+ */
 function postagePath(w: number, h: number): Path2D {
-  // Full-bleed rectangle: the photo fills the whole window; the perforation lives on the
-  // frame overlay, not the silhouette (decision 4).
-  return new Path2D(`M0 0L${f(w)} 0L${f(w)} ${f(h)}L0 ${f(h)}Z`);
-}
+  const bump = Math.min(w, h) * 0.045; // perforation radius
+  // The scallops bulge OUTWARD, so the rectangle is inset by exactly one bump: the scallop
+  // crests then land on the box's edges (full-bleed, nothing wasted) instead of being clipped
+  // away by the canvas — clipping them is what degenerates the stamp into a bare rectangle.
+  const l = bump;
+  const t = bump;
+  const r = w - bump;
+  const b = h - bump;
 
-function postageFrame(w: number, h: number): Path2D {
-  const t = Math.min(w, h) * 0.09; // border thickness
-  const bump = t * 0.62; // scallop depth into the band
-  // Outer contour = the window rect (clockwise). Inner contour = an inset rect whose edges
-  // scallop OUTWARD into the band; filled evenodd → a white perforated border ring.
-  let d = `M0 0L${f(w)} 0L${f(w)} ${f(h)}L0 ${f(h)}Z`;
-
-  const inset = { l: t, tp: t, r: w - t, b: h - t };
-  // edge: A -> B with an outward normal `n`; chain quadratic scallops.
-  const edge = (
-    ax: number,
-    ay: number,
-    bx: number,
-    by: number,
-    nx: number,
-    ny: number,
-    first: boolean,
-  ) => {
+  // The outline is traversed clockwise (y down), so sweep-flag 1 arcs AWAY from the interior.
+  const edge = (ax: number, ay: number, bx: number, by: number) => {
     const len = Math.hypot(bx - ax, by - ay);
     const n = Math.max(3, Math.round(len / (2 * bump)));
     const dx = (bx - ax) / n;
     const dy = (by - ay) / n;
-    if (first) d += `M${f(ax)} ${f(ay)}`;
+    const rad = Math.hypot(dx, dy) / 2;
+    let seg = "";
     for (let i = 0; i < n; i += 1) {
-      const p0x = ax + dx * i;
-      const p0y = ay + dy * i;
-      const p1x = ax + dx * (i + 1);
-      const p1y = ay + dy * (i + 1);
-      const mx = (p0x + p1x) / 2 + nx * bump;
-      const my = (p0y + p1y) / 2 + ny * bump;
-      d += `Q${f(mx)} ${f(my)} ${f(p1x)} ${f(p1y)}`;
+      seg += `A${f(rad)} ${f(rad)} 0 0 1 ${f(ax + dx * (i + 1))} ${f(ay + dy * (i + 1))}`;
     }
+    return seg;
   };
-  edge(inset.l, inset.tp, inset.r, inset.tp, 0, -1, true); // top, bulge up
-  edge(inset.r, inset.tp, inset.r, inset.b, 1, 0, false); // right, bulge right
-  edge(inset.r, inset.b, inset.l, inset.b, 0, 1, false); // bottom, bulge down
-  edge(inset.l, inset.b, inset.l, inset.tp, -1, 0, false); // left, bulge left
-  d += "Z";
-  return new Path2D(d);
+
+  return new Path2D(
+    `M${f(l)} ${f(t)}${edge(l, t, r, t)}${edge(r, t, r, b)}${edge(r, b, l, b)}${edge(l, b, l, t)}Z`,
+  );
 }
 
 export const MASKS: readonly StampMask[] = [
-  { id: "postage", label: "Postage", aspect: 3 / 4, path: postagePath, frame: postageFrame, frameStyle: "#ffffff" },
+  { id: "postage", label: "Postage", aspect: 3 / 4, path: postagePath },
   { id: "cloud", label: "Cloud", aspect: 1.4, path: cloudPath },
-  { id: "spiky", label: "Spiky", aspect: 1, path: spikyPath },
+  // The id stays "spiky" (it is the persisted mask_type + a DB check-constraint value); M6
+  // reshaped it from a 14-spike starburst into a rounded 5-point star.
+  { id: "spiky", label: "Star", aspect: 1, path: starPath },
   { id: "heart", label: "Heart", aspect: 1, path: heartPath },
 ] as const;
 

@@ -23,6 +23,18 @@ import {
 export const LONG_PRESS_MS = 450;
 export const SLOP_PX = 8;
 
+// ---- desktop steps (a mouse has no second finger) ----
+/** One click of `+` / `−`, and one wheel notch, on the selected stamp. */
+export const SCALE_STEP = 1.12;
+/** One click of ⟲ / ⟳, and one arrow key. Lands on the 8 legal `rotation_deg` values. */
+export const ROTATE_STEP_DEG = 45;
+/**
+ * A wheel has no `pointerup`, so a wheel "gesture" ends when the wheel goes quiet. Scaling is
+ * live on every notch, but the WRITE happens once, this long after the last one — the same
+ * one-write-per-gesture rule every other interaction obeys.
+ */
+export const WHEEL_COMMIT_MS = 250;
+
 /** The live (uncommitted) transform of the stamp being manipulated, in normalized page coords. */
 export type LiveTransform = {
   id: string;
@@ -78,6 +90,7 @@ export class DayGestures {
   private live: LiveTransform | null = null;
   private aspect = 1;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private wheelTimer: ReturnType<typeof setTimeout> | null = null;
   private pinchStart: { dist: number; angle: number; scale: number; rotation: number } | null =
     null;
 
@@ -249,8 +262,97 @@ export class DayGestures {
     this.reset();
   }
 
+  // ---- desktop controls: the − + ⟲ ⟳ bar, the wheel, and the arrow keys -------------------
+  //
+  // They act on the SELECTED stamp (selection is the gate for the mouse exactly as it is for a
+  // thumb), reuse the same clamps, and produce the same data as the touch gestures — a rotate
+  // click is one 45° step, which is already a legal `rotation_deg`, so there is no second snap
+  // path to keep in sync.
+
+  /** The selected stamp's current transform (live if mid-gesture, else its persisted box). */
+  private current(): LiveTransform | null {
+    if (!this.selectedId) return null;
+    if (this.live && this.live.id === this.selectedId) return this.live;
+    const box = this.boxes.find((b) => b.id === this.selectedId);
+    if (!box) return null;
+    this.aspect = box.w / box.h;
+    return {
+      id: box.id,
+      pos_x: box.cx / this.pageW,
+      pos_y: box.cy / (this.pageW / PAGE_ASPECT),
+      scale: box.w / this.pageW,
+      rotation_deg: box.rot,
+    };
+  }
+
+  private applyDesktop(next: LiveTransform, commit: "now" | "debounced"): void {
+    const rotation_deg = snapRotation(next.rotation_deg);
+    const scale = clampScale(next.scale, this.aspect, rotation_deg);
+    const center = clampCenter(
+      { x: next.pos_x, y: next.pos_y },
+      scale,
+      this.aspect,
+      rotation_deg,
+    );
+    const t: LiveTransform = {
+      id: next.id,
+      pos_x: center.x,
+      pos_y: center.y,
+      scale,
+      rotation_deg,
+    };
+
+    this.live = t;
+    this.cb.onChange(t);
+
+    if (this.wheelTimer) {
+      clearTimeout(this.wheelTimer);
+      this.wheelTimer = null;
+    }
+    if (commit === "now") {
+      this.cb.onCommit(t);
+      this.reset();
+      return;
+    }
+    this.wheelTimer = setTimeout(() => {
+      this.wheelTimer = null;
+      this.cb.onCommit(t);
+      this.reset();
+    }, WHEEL_COMMIT_MS);
+  }
+
+  /** `+` / `−` on the desktop bar, and the `+` / `-` keys. One write per click. */
+  scaleStep(direction: 1 | -1): void {
+    const cur = this.current();
+    if (!cur) return;
+    const factor = direction > 0 ? SCALE_STEP : 1 / SCALE_STEP;
+    this.applyDesktop({ ...cur, scale: cur.scale * factor }, "now");
+  }
+
+  /** ⟲ / ⟳ on the desktop bar, and the ← / → keys. One 45° step = one legal rotation_deg. */
+  rotateStep(direction: 1 | -1): void {
+    const cur = this.current();
+    if (!cur) return;
+    this.applyDesktop(
+      { ...cur, rotation_deg: cur.rotation_deg + direction * ROTATE_STEP_DEG },
+      "now",
+    );
+  }
+
+  /** The wheel scales the selected stamp: live per notch, ONE write once the wheel goes quiet. */
+  wheel(deltaY: number): void {
+    const cur = this.current();
+    if (!cur) return;
+    const factor = deltaY < 0 ? SCALE_STEP : 1 / SCALE_STEP;
+    this.applyDesktop({ ...cur, scale: cur.scale * factor }, "debounced");
+  }
+
   cancel(): void {
     this.clearTimer();
+    if (this.wheelTimer) {
+      clearTimeout(this.wheelTimer);
+      this.wheelTimer = null;
+    }
     this.pointers = [];
     this.mode = "idle";
     this.pinchStart = null;

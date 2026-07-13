@@ -5,6 +5,11 @@ import type { GridCell } from "@/lib/calendar/month-grid";
 import type { DayData } from "@/lib/db/queries";
 import { stampBoxes } from "@/lib/day/layout";
 
+/** The day number's size, as a fraction of the cell width — the same weight in both views. */
+const CHIP_FONT_RATIO = 0.1;
+/** …but never so small it stops being legible on a cramped landscape phone. */
+const CHIP_MIN_FONT_PX = 7;
+
 /**
  * One day cell: a blank (leading/trailing pad) or a numbered day. When the day has stamps it
  * renders the day's **faithful mini-composition** — every live stamp at its real position,
@@ -39,11 +44,13 @@ export function DayCell({
   }
 
   const boxes = day && width > 0 ? stampBoxes(day.stamps, day.aspects, width) : [];
-  const chipTone = isToday
-    ? "bg-today-bg text-today-ink"
-    : boxes.length > 0
-      ? "bg-paper/85 text-ink"
-      : "text-ink";
+
+  // The number is sized RELATIVE to the cell, so it carries the same visual weight in the
+  // close-up as in the full month (where a fixed 24px chip swallowed the composition). Today
+  // still gets its filled disc — that marker is the point; every other day is a shadowed
+  // number with no disc, so it obstructs almost nothing.
+  const fontPx = Math.max(CHIP_MIN_FONT_PX, Math.round(width * CHIP_FONT_RATIO));
+  const padPx = Math.round(fontPx * 0.28);
 
   return (
     <button
@@ -84,7 +91,21 @@ export function DayCell({
       </div>
 
       <span
-        className={`absolute left-1 top-1 z-10 grid h-6 min-w-6 place-items-center rounded-full px-1 text-sm font-bold ${chipTone}`}
+        className={`absolute z-10 grid place-items-center rounded-full font-bold leading-none ${
+          isToday ? "bg-today-bg text-today-ink" : "text-ink"
+        }`}
+        style={{
+          left: padPx,
+          top: padPx,
+          fontSize: fontPx,
+          minWidth: fontPx * 1.9,
+          height: fontPx * 1.9,
+          // No disc on an ordinary day — the number rides on the photo with a soft halo, so it
+          // stays legible over any stamp while obstructing almost none of it.
+          textShadow: isToday
+            ? undefined
+            : "0 0 2px var(--color-paper), 0 0 4px var(--color-paper)",
+        }}
       >
         {cell.day}
       </span>

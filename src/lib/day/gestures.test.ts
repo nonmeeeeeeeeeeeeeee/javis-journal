@@ -9,7 +9,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Stamp } from "@/lib/db/types";
-import { DayGestures, LONG_PRESS_MS, type LiveTransform } from "./gestures";
+import {
+  DayGestures,
+  LONG_PRESS_MS,
+  WHEEL_COMMIT_MS,
+  type LiveTransform,
+} from "./gestures";
 import { stampBoxes } from "./layout";
 import { isInsidePage, placeStamp } from "./place";
 
@@ -195,5 +200,79 @@ describe("pinch / twist", () => {
     expect(
       isInsidePage({ x: t.pos_x, y: t.pos_y }, t.scale, 1, t.rotation_deg),
     ).toBe(true);
+  });
+});
+
+// A mouse has no second finger: these are the ONLY way scale and rotate are reachable on
+// desktop. They must produce the same data (and obey the same clamps) as the touch gestures.
+describe("desktop controls", () => {
+  test("selection is the gate for the mouse too: no selection → the buttons and wheel no-op", () => {
+    const m = machine([stamp({})], null);
+    m.g.scaleStep(1);
+    m.g.rotateStep(1);
+    m.g.wheel(-100);
+    expect(m.commits).toEqual([]);
+  });
+
+  test("a rotate click is one 45° step, and lands on a legal rotation_deg", () => {
+    const legal = [0, 45, 90, 135, 180, 225, 270, 315];
+    const m = machine([stamp({ scale: 0.3, rotation_deg: 0 })], "s1");
+    m.g.rotateStep(1);
+    expect(m.commits[0].rotation_deg).toBe(45);
+    expect(legal).toContain(m.commits[0].rotation_deg);
+
+    const back = machine([stamp({ scale: 0.3, rotation_deg: 0 })], "s1");
+    back.g.rotateStep(-1); // through zero, the long way round
+    expect(legal).toContain(back.commits[0].rotation_deg);
+    expect(back.commits[0].rotation_deg).toBe(315);
+  });
+
+  test("a scale click writes once and cannot scale the stamp off the page", () => {
+    const day = [stamp({ scale: 0.3 })];
+    const m = machine(day, "s1");
+    m.g.scaleStep(1);
+    expect(m.commits).toHaveLength(1);
+    expect(m.commits[0].scale).toBeGreaterThan(0.3);
+
+    // Hammer it: even 40 clicks up stay on the page (clamped at max-fit).
+    const hammer = machine(day, "s1");
+    for (let i = 0; i < 40; i++) hammer.g.scaleStep(1);
+    const t = hammer.commits.at(-1)!;
+    expect(isInsidePage({ x: t.pos_x, y: t.pos_y }, t.scale, 1, t.rotation_deg)).toBe(true);
+  });
+
+  test("the wheel scales live but writes ONCE, after the wheel goes quiet", () => {
+    const m = machine([stamp({ scale: 0.3 })], "s1");
+    for (let i = 0; i < 12; i++) m.g.wheel(-100);
+    expect(m.commits).toHaveLength(0); // …not one write per notch
+
+    vi.advanceTimersByTime(WHEEL_COMMIT_MS + 10);
+    expect(m.commits).toHaveLength(1);
+    expect(m.commits[0].scale).toBeGreaterThan(0.3);
+  });
+
+  test("a wheel gesture that is still moving keeps deferring its single write", () => {
+    const m = machine([stamp({ scale: 0.3 })], "s1");
+    m.g.wheel(-100);
+    vi.advanceTimersByTime(WHEEL_COMMIT_MS - 50);
+    m.g.wheel(-100); // still scrolling → the pending commit is pushed back
+    vi.advanceTimersByTime(WHEEL_COMMIT_MS - 50);
+    expect(m.commits).toHaveLength(0);
+    vi.advanceTimersByTime(60);
+    expect(m.commits).toHaveLength(1);
+  });
+
+  test("a drag still works right after a desktop nudge (the nudge leaves no dirty state)", () => {
+    const day = [stamp({ scale: 0.3 })];
+    const c = centerOf(day, "s1");
+    const m = machine(day, "s1");
+    m.g.rotateStep(1);
+    expect(m.commits).toHaveLength(1);
+
+    m.g.pointerDown(1, c);
+    m.g.pointerMove(1, { x: c.x + 60, y: c.y });
+    m.g.pointerUp(1);
+    expect(m.commits).toHaveLength(2);
+    expect(m.commits[1].pos_x).toBeGreaterThan(m.commits[0].pos_x);
   });
 });

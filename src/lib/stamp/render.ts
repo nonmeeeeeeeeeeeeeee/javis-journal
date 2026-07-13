@@ -22,12 +22,13 @@ export type RenderSource = ImageBitmap | HTMLCanvasElement | OffscreenCanvas;
 
 type AnyCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-export const FRAME_FALLBACK_STYLE = "#ffffff";
-
 /**
- * Draw the panned/zoomed/rotated photo behind an upright mask window into a mask-aspect
- * canvas, cut it to the mask alpha (destination-in), then paint the optional frame overlay
- * (postage perforation) on top. `size` must match the mask aspect.
+ * Draw the panned/zoomed/rotated photo behind an upright mask window into a mask-aspect canvas,
+ * then cut it to the mask alpha (destination-in). `size` must match the mask aspect.
+ *
+ * There is no overlay pass any more: postage's perforation lives in its ALPHA (the edge is
+ * bitten out), not in a white band painted on top — a white ring bled onto the journal page and
+ * was the only non-photo ink in a stamp.
  */
 export function renderFrame(
   ctx: AnyCtx,
@@ -58,18 +59,9 @@ export function renderFrame(
   ctx.drawImage(img, 0, 0);
   ctx.restore();
 
-  // 2) Cut to the mask alpha.
+  // 2) Cut to the mask alpha. That is the whole stamp — nothing is painted on top.
   ctx.save();
   ctx.globalCompositeOperation = "destination-in";
   ctx.fill(mask.path(size.width, size.height));
   ctx.restore();
-
-  // 3) Perforated frame overlay (postage), painted on top of the cut pixels.
-  if (mask.frame) {
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = mask.frameStyle ?? FRAME_FALLBACK_STYLE;
-    ctx.fill(mask.frame(size.width, size.height), "evenodd");
-    ctx.restore();
-  }
 }

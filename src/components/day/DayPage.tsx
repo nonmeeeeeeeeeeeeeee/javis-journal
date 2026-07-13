@@ -18,6 +18,7 @@ import type { RotationDeg } from "@/lib/db/types";
 import { DayGestures, type LiveTransform } from "@/lib/day/gestures";
 import { applyLive, stampBoxes } from "@/lib/day/layout";
 import { PAGE_ASPECT, canPlace, toggleFrontBack } from "@/lib/day/place";
+import { useFinePointer } from "@/lib/ui/pointer";
 import { DayStamp } from "./DayStamp";
 import { UndoToast } from "./UndoToast";
 
@@ -25,6 +26,27 @@ const FLIP_MS = 250; // matches Calendar's view-switch animation
 const PAGE_INSET = 0.86; // the page fills this much of the viewport; the rest is the peeks
 const DELETE_SIZE = 44; // a full touch target
 const DELETE_OFFSET = 8; // px the ✕ floats OUTSIDE the stamp's corner (never blocks a pinch)
+
+function BarButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="grid h-10 w-10 place-items-center rounded-full text-lg text-ink hover:bg-line-soft"
+    >
+      {children}
+    </button>
+  );
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -61,11 +83,13 @@ export function DayPage({
   onClose,
 }: DayPageProps) {
   const { stamps, urls, aspects } = useDayView(date);
+  const fine = useFinePointer();
   const [pageBox, setPageBox] = useState({ w: 0, h: 0 });
   const [live, setLive] = useState<LiveTransform | null>(null);
   const [undo, setUndo] = useState<{ id: string; layer_order: number } | null>(null);
 
   const pageRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const gesturesRef = useRef<DayGestures | null>(null);
   // The gesture machine outlives every render; this is how it reads the *current* stamps and
   // callbacks without being rebuilt (and without touching a ref during render).
@@ -153,6 +177,61 @@ export function DayPage({
     if (layerOrder !== null) setUndo({ id: selected, layer_order: layerOrder });
   }, [selected, onSelect]);
 
+  // Wheel = scale the selected stamp (desktop's pinch). Non-passive so the page can't scroll
+  // under it. It scales live per notch and writes once the wheel goes quiet (WHEEL_COMMIT_MS).
+  useEffect(() => {
+    const el = surfaceRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!selected) return; // selection is the gate for the mouse too
+      e.preventDefault();
+      gesturesRef.current?.wheel(e.deltaY);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [selected]);
+
+  // The keyboard extras. Bound regardless of pointer type — a keyboard on a tablet is still a
+  // keyboard — but the desktop bar is the discoverable path; these are the accelerator.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const g = gesturesRef.current;
+      if (e.key === "Escape") {
+        // Deselect first, then close — what every editor does, so a stray Escape never throws
+        // her out of a day she is mid-arrangement in.
+        if (selected) onSelect(null);
+        else onClose();
+        return;
+      }
+      if (!selected || !g) return;
+      switch (e.key) {
+        case "ArrowLeft":
+          g.rotateStep(-1);
+          break;
+        case "ArrowRight":
+          g.rotateStep(1);
+          break;
+        case "+":
+        case "=":
+          g.scaleStep(1);
+          break;
+        case "-":
+        case "_":
+          g.scaleStep(-1);
+          break;
+        case "Delete":
+        case "Backspace":
+          void onDelete();
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, onSelect, onClose, onDelete]);
+
   const liveFor = (id: string) => (live && live.id === id ? live : null);
   const selectedBox = boxes.find((b) => b.id === selected) ?? null;
   const selectedLive = selectedBox
@@ -179,6 +258,7 @@ export function DayPage({
         {/* The gesture surface. `isolate` keeps the stamps' z-indexes (layer_order, which
             drifts as she taps front/back) in their own stacking context, under the chrome. */}
         <div
+          ref={surfaceRef}
           className="absolute inset-0 isolate [touch-action:none]"
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -246,6 +326,28 @@ export function DayPage({
           />
         ) : null}
       </div>
+
+      {/* Desktop only: a mouse cannot pinch or twist, so scale and rotate become buttons. The
+          bar is pinned to the bottom of the page rather than floating by the selection — a
+          floating cluster gets clipped at the page edge and collides with the composition she
+          is arranging. The ✕ stays on the stamp (it works on both platforms). */}
+      {fine && selected ? (
+        <div className="absolute bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-paper px-2 py-1 shadow-sm">
+          <BarButton label="Smaller" onClick={() => gesturesRef.current?.scaleStep(-1)}>
+            −
+          </BarButton>
+          <BarButton label="Bigger" onClick={() => gesturesRef.current?.scaleStep(1)}>
+            +
+          </BarButton>
+          <span className="mx-1 h-6 w-px bg-line" />
+          <BarButton label="Rotate left" onClick={() => gesturesRef.current?.rotateStep(-1)}>
+            ⟲
+          </BarButton>
+          <BarButton label="Rotate right" onClick={() => gesturesRef.current?.rotateStep(1)}>
+            ⟳
+          </BarButton>
+        </div>
+      ) : null}
 
       {/* The + FAB: bottom-right, and HIDDEN (not disabled) at 3 stamps — a greyed-out button
           invites a tap that does nothing, which is the app fighting her (decision 11). */}

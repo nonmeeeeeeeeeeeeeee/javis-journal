@@ -19,11 +19,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImagePipelineError } from "@/lib/image/process";
 import { bakeStamp } from "@/lib/stamp/bake";
 import { decodeForCutter } from "@/lib/stamp/decode";
-import { CutterController, type CutterState } from "@/lib/stamp/gestures";
+import {
+  CUTTER_ROTATE_STEP_DEG,
+  CutterController,
+  type CutterState,
+} from "@/lib/stamp/gestures";
 import { ingestStamp } from "@/lib/stamp/ingest-stamp";
 import { MASKS, type MaskId } from "@/lib/stamp/masks";
 import { PUNCH_ASPECT, punchWindow } from "@/lib/stamp/punch";
 import { renderFrame } from "@/lib/stamp/render";
+import { useFinePointer } from "@/lib/ui/pointer";
 
 export type StamperProps = {
   /** The picked photo (transient — decoded to frame, discarded on confirm). */
@@ -39,11 +44,34 @@ type Phase = "decoding" | "ready" | "error";
 const MAX_DPR = 2; // cap the preview backing store for perf on high-DPR phones
 const EJECT_MS = 260; // the stamp's beat in the drawer before it lands on the day page
 
-/** The drawer plate (the press-to-cut surface) and the slot, as fractions of the art — both
- *  measured off `punch.webp`. Re-exporting the art means re-measuring these two objects. */
+/** The drawer plate (the press-to-cut surface), the slot, and the empty top bezel the shape
+ *  cycle sits on — all fractions of the art, measured off `punch.webp`. Re-exporting the art
+ *  means re-measuring these three objects. */
 const DRAWER = { left: 0.11, top: 0.65, w: 0.78, h: 0.21 };
 const SLOT = { cx: 0.49, y: 0.47 };
+const BEZEL_TOP = 0.055; // the plastic band above the window
 const STAMP_PX = 46; // the emerging stamp's size in the drawer beat
+
+function GutterButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="grid h-12 w-12 place-items-center rounded-full bg-paper text-xl text-ink shadow-sm"
+    >
+      {children}
+    </button>
+  );
+}
 
 export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
   const [maskIndex, setMaskIndex] = useState(0);
@@ -65,6 +93,7 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
 
   // Controller (created once, stable). onChange mirrors the live transform into React state.
   const [controller] = useState(() => new CutterController(setTransform));
+  const fine = useFinePointer();
 
   const mask = MASKS[maskIndex];
   const win = useMemo(
@@ -305,6 +334,34 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
           {busy ? "cutting…" : "cut"}
         </button>
 
+        {/* The shape cycle lives ON the machine's top bezel — directly above the window whose
+            shape it changes. (It used to float in the page gutters, which on a desktop window
+            stranded it miles from the thing it controls.) */}
+        <div
+          className="absolute z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-paper/85 px-2 py-1 shadow-sm"
+          style={{ left: "50%", top: px(BEZEL_TOP * art.h) }}
+        >
+          <button
+            type="button"
+            aria-label="Previous shape"
+            onClick={() => cycleMask(-1)}
+            className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
+          >
+            ‹
+          </button>
+          <span className="min-w-16 text-center text-xs font-semibold uppercase tracking-widest text-ink">
+            {mask.label}
+          </span>
+          <button
+            type="button"
+            aria-label="Next shape"
+            onClick={() => cycleMask(1)}
+            className="grid h-9 w-9 place-items-center rounded-full text-xl text-ink"
+          >
+            ›
+          </button>
+        </div>
+
         {/* The cut stamp emerging from the slot into the drawer — that is what the slot and the
             drawer are FOR. A beat, never a blocker. */}
         {ejecting ? (
@@ -322,27 +379,39 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
         ) : null}
       </div>
 
-      {/* The mask chevrons live in the side gutters (as in the mock); on a narrow phone they
-          overlay the machine's edges, which is where the thumbs already are. */}
-      <button
-        type="button"
-        aria-label="Previous shape"
-        onClick={() => cycleMask(-1)}
-        className="absolute left-2 top-1/2 z-20 grid h-14 w-14 -translate-y-1/2 place-items-center rounded-full bg-paper/85 text-2xl text-ink shadow-sm"
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        aria-label="Next shape"
-        onClick={() => cycleMask(1)}
-        className="absolute right-2 top-1/2 z-20 grid h-14 w-14 -translate-y-1/2 place-items-center rounded-full bg-paper/85 text-2xl text-ink shadow-sm"
-      >
-        ›
-      </button>
-      <span className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-xs uppercase tracking-widest text-muted">
-        {mask.label}
-      </span>
+      {/* Desktop only: a mouse has no second finger, so the pinch (zoom) and the twist (rotate)
+          become explicit buttons — otherwise the photo can only be panned and wheel-zoomed, and
+          the rotation the cutter is built around is simply unreachable. They live in the side
+          gutters the chevrons just vacated, and a phone never renders them. */}
+      {fine && phase === "ready" ? (
+        <>
+          <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2">
+            <GutterButton label="Zoom in" onClick={() => controller.zoomIn()}>
+              +
+            </GutterButton>
+            <GutterButton label="Zoom out" onClick={() => controller.zoomOut()}>
+              −
+            </GutterButton>
+          </div>
+          <div className="absolute right-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2">
+            <GutterButton
+              label="Rotate left"
+              onClick={() => controller.rotateByDeg(-CUTTER_ROTATE_STEP_DEG)}
+            >
+              ⟲
+            </GutterButton>
+            <GutterButton
+              label="Rotate right"
+              onClick={() => controller.rotateByDeg(CUTTER_ROTATE_STEP_DEG)}
+            >
+              ⟳
+            </GutterButton>
+          </div>
+          <p className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 text-xs text-muted">
+            drag to move · scroll to zoom
+          </p>
+        </>
+      ) : null}
 
       {error && phase === "ready" ? (
         <p className="absolute inset-x-6 bottom-16 z-30 rounded-control bg-paper p-3 text-center text-sm text-accent shadow-sm">

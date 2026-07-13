@@ -24,6 +24,9 @@ export type CutterState = Transform;
 
 const MIN_SAMPLE_PX = 24; // max-zoom guard: never sample a region narrower than this
 const WHEEL_STEP = 1.1; // desktop only
+const BUTTON_STEP = 1.2; // desktop only
+/** One click of the desktop rotate buttons. Continuous rotation — no snapping in the cutter. */
+export const CUTTER_ROTATE_STEP_DEG = 15;
 
 export class CutterController {
   private t: Transform = { offX: 0, offY: 0, scale: 1, rotation: 0 };
@@ -64,9 +67,30 @@ export class CutterController {
     return { ...this.t };
   }
 
+  // ---- discrete controls (desktop: a mouse has no second finger) ----
   /** Desktop affordance only (the phone pinches). */
   wheel(deltaY: number): void {
     this.zoomBy(deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP);
+    this.emit();
+  }
+
+  zoomIn(): void {
+    this.zoomBy(BUTTON_STEP);
+    this.emit();
+  }
+
+  zoomOut(): void {
+    this.zoomBy(1 / BUTTON_STEP);
+    this.emit();
+  }
+
+  /**
+   * Rotate the photo by `deg` (the desktop stand-in for the two-finger twist). Continuous —
+   * any angle is legal here, and normalize() bumps the zoom to the angle's min-cover so a
+   * blank corner still can't appear.
+   */
+  rotateByDeg(deg: number): void {
+    this.rotateBy(-deg);
     this.emit();
   }
 
