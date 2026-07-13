@@ -116,23 +116,29 @@ function cloudPath(w: number, h: number): Path2D {
  * with a white perforated band painted on top; the band bled white onto the journal page, so
  * the perforation moved into the alpha and the overlay pass is gone.)
  */
+/** Scallops per edge, corners excluded — a FIXED count, so the perforation reads the same at
+ *  any bake size (a radius-derived count drifts with the box). Postage is 3:4, so 6 across the
+ *  short edges and 8 down the long ones makes the bumps very nearly square. */
+const POSTAGE_BUMPS = { short: 6, long: 8 };
+
 function postagePath(w: number, h: number): Path2D {
-  const bump = Math.min(w, h) * 0.045; // perforation radius
-  // The scallops bulge OUTWARD, so the rectangle is inset by exactly one bump: the scallop
-  // crests then land on the box's edges (full-bleed, nothing wasted) instead of being clipped
-  // away by the canvas — clipping them is what degenerates the stamp into a bare rectangle.
-  const l = bump;
-  const t = bump;
-  const r = w - bump;
-  const b = h - bump;
+  // Inset by one bump radius so the OUTWARD crests land exactly on the box's edges (full-bleed,
+  // nothing wasted) rather than outside it, where the canvas would clip every one of them away
+  // and the stamp would degenerate into a bare rectangle.
+  //
+  // The inset is one radius, and the radius is half a chord, and the chords tile the run — so
+  // r = w / (2·n + 2) makes the top's 6 bumps come out exactly circular.
+  const r = w / (2 * POSTAGE_BUMPS.short + 2);
+  const l = r;
+  const t = r;
+  const right = w - r;
+  const b = h - r;
 
   // The outline is traversed clockwise (y down), so sweep-flag 1 arcs AWAY from the interior.
-  const edge = (ax: number, ay: number, bx: number, by: number) => {
-    const len = Math.hypot(bx - ax, by - ay);
-    const n = Math.max(3, Math.round(len / (2 * bump)));
+  const edge = (ax: number, ay: number, bx: number, by: number, n: number) => {
     const dx = (bx - ax) / n;
     const dy = (by - ay) / n;
-    const rad = Math.hypot(dx, dy) / 2;
+    const rad = Math.hypot(dx, dy) / 2; // each bump is a semicircle on its chord
     let seg = "";
     for (let i = 0; i < n; i += 1) {
       seg += `A${f(rad)} ${f(rad)} 0 0 1 ${f(ax + dx * (i + 1))} ${f(ay + dy * (i + 1))}`;
@@ -140,8 +146,15 @@ function postagePath(w: number, h: number): Path2D {
     return seg;
   };
 
+  const short = POSTAGE_BUMPS.short;
+  const long = POSTAGE_BUMPS.long;
   return new Path2D(
-    `M${f(l)} ${f(t)}${edge(l, t, r, t)}${edge(r, t, r, b)}${edge(r, b, l, b)}${edge(l, b, l, t)}Z`,
+    `M${f(l)} ${f(t)}` +
+      edge(l, t, right, t, short) + // top
+      edge(right, t, right, b, long) + // right
+      edge(right, b, l, b, short) + // bottom
+      edge(l, b, l, t, long) + // left
+      "Z",
   );
 }
 
