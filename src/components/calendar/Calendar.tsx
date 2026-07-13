@@ -271,7 +271,6 @@ export function Calendar() {
       <StickerLayer
         year={year}
         month={month}
-        view={view}
         startOfWeek={profile.startOfWeek}
         gridW={cellW * 7}
         selected={selectedSticker}

@@ -7,26 +7,24 @@
 // than by poking at the DOM (`elementFromPoint` under a rotated, transparent-cornered PNG is
 // exactly the kind of thing that goes subtly wrong).
 //
+// It needs no `view`: close-up flows column-major and full-month flows row-major, but
+// `toColumnMajor` *preserves visual columns* — cells[col·6 + row] === rowMajor[row·7 + col] — so
+// the day drawn at a given (column, row) is the same day in both views. Which is, of course, the
+// same reason a sticker keeps its place across a view switch.
+//
 // Pure: no React, no Dexie, no DOM.
 
-import type { CalendarView } from "@/lib/calendar/fit";
-import { monthGrid, toColumnMajor } from "@/lib/calendar/month-grid";
+import { monthGrid } from "@/lib/calendar/month-grid";
 import type { Point } from "@/lib/gestures/machine";
 import { gridHeight } from "./layout";
 
 export const COLS = 7;
 export const ROWS = 6;
 
-/**
- * The date at `p` (in grid pixels), or null on a blank pad cell / outside the grid.
- *
- * The two views differ only in flow: full-month is row-major, close-up is column-major (the
- * visual column is preserved either way — see `toColumnMajor`).
- */
+/** The date at `p` (in grid pixels), or null on a blank pad cell / outside the grid. */
 export function dateAtGridPoint(
   p: Point,
   gridW: number,
-  view: CalendarView,
   year: number,
   month: number,
   startOfWeek: number,
@@ -39,10 +37,5 @@ export function dateAtGridPoint(
   const row = Math.floor(p.y / cellH);
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
 
-  const rowMajor = monthGrid(year, month, startOfWeek);
-  const cells = view === "full-month" ? rowMajor : toColumnMajor(rowMajor);
-  // Row-major reads across; column-major reads down — the same two flows the grids use.
-  const index = view === "full-month" ? row * COLS + col : col * ROWS + row;
-
-  return cells[index]?.date ?? null;
+  return monthGrid(year, month, startOfWeek)[row * COLS + col]?.date ?? null;
 }

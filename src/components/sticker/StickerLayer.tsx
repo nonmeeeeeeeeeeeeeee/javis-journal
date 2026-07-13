@@ -26,7 +26,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CalendarView } from "@/lib/calendar/fit";
 import {
   deletePlacedSticker,
   restorePlacedSticker,
@@ -49,7 +48,6 @@ const DELETE_OFFSET = 6;
 export type StickerLayerProps = {
   year: number;
   month: number;
-  view: CalendarView;
   startOfWeek: number;
   /** The day-grid box's width in px (`7 × cellW`) — the coordinate box stickers are normalized to. */
   gridW: number;
@@ -62,7 +60,6 @@ export type StickerLayerProps = {
 export function StickerLayer({
   year,
   month,
-  view,
   startOfWeek,
   gridW,
   selected,
@@ -78,7 +75,7 @@ export function StickerLayer({
   const gesturesRef = useRef<StickerGestures | null>(null);
   // The machine outlives every render; this is how it reads the CURRENT stickers and callbacks
   // without being rebuilt (and without touching a ref during render).
-  const ctxRef = useRef({ stickers, selected, onSelect, onOpenDay, view, startOfWeek, gridW });
+  const ctxRef = useRef({ stickers, selected, onSelect, onOpenDay, startOfWeek, gridW });
   // Where the last pointer went down, in grid pixels — a tap on an unselected sticker needs the
   // POINT (to find the day underneath), and the machine only reports the id.
   const lastPointRef = useRef({ x: 0, y: 0 });
@@ -113,7 +110,6 @@ export function StickerLayer({
         const date = dateAtGridPoint(
           lastPointRef.current,
           ctx.gridW,
-          ctx.view,
           year,
           month,
           ctx.startOfWeek,
@@ -131,9 +127,9 @@ export function StickerLayer({
   }, [year, month]);
 
   useEffect(() => {
-    ctxRef.current = { stickers, selected, onSelect, onOpenDay, view, startOfWeek, gridW };
+    ctxRef.current = { stickers, selected, onSelect, onOpenDay, startOfWeek, gridW };
     gesturesRef.current?.setContext(boxes, gridW, selected);
-  }, [stickers, selected, onSelect, onOpenDay, view, startOfWeek, boxes, gridW]);
+  }, [stickers, selected, onSelect, onOpenDay, startOfWeek, boxes, gridW]);
 
   // Selection can't survive a month change (the sticker isn't on this month) or a view switch's
   // remeasure — clearing it also disarms the layer, handing the calendar back its gestures.
