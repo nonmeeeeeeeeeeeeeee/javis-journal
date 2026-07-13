@@ -31,6 +31,25 @@ export function pageHeight(pageW: number): number {
 }
 
 /**
+ * Overlay a live (uncommitted) gesture transform onto a persisted box. The gesture writes once,
+ * on gesture-end; until then the page renders from this — one function, so the stamp, its
+ * selection glow and its ✕ can never disagree about where it is.
+ */
+export function applyLive(
+  box: StampBox,
+  live: { pos_x: number; pos_y: number; scale: number; rotation_deg: number } | null,
+  pageW: number,
+): StampBox {
+  if (!live) return box;
+  const aspect = box.w / box.h;
+  const w = live.scale * pageW;
+  const h = w / aspect;
+  const cx = live.pos_x * pageW;
+  const cy = live.pos_y * pageHeight(pageW);
+  return { ...box, x: cx - w / 2, y: cy - h / 2, w, h, cx, cy, rot: live.rotation_deg };
+}
+
+/**
  * The baked aspect of a stamp's image (width / height). Falls back to 1 when the `images` row
  * hasn't landed yet (a fresh pull on a second device) — a square box is a sane placeholder and
  * never NaNs the layout.

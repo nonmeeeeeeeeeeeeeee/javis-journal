@@ -92,9 +92,9 @@ async function seed(): Promise<void> {
           user_id: SEED_USER,
           image_id: imgId,
           mask_type: "circle",
-          pos_x: 0,
-          pos_y: 0,
-          scale: 1,
+          pos_x: 0.5,
+          pos_y: 0.5,
+          scale: 0.7,
           rotation_deg: 0,
           layer_order: s,
           created_at: now,
@@ -215,7 +215,7 @@ function CanaryProbe() {
 
 function ProbeMount({ year, month }: { year: number; month: number }) {
   const data = useMonthData(year, month);
-  const withThumb = [...data.values()].filter((d) => d.thumbUrl).length;
+  const withThumb = [...data.values()].filter((d) => d.stamps.length > 0).length;
   return (
     <p className="font-mono text-[0.7rem] text-muted">
       probe {year}-{String(month).padStart(2, "0")}: {data.size} days / {withThumb}{" "}

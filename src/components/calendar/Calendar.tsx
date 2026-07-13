@@ -11,6 +11,8 @@ import {
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
 import { setStartOfWeek } from "@/lib/db/mutations";
+import { AddStampFlow } from "@/components/day/AddStampFlow";
+import { DayPage } from "@/components/day/DayPage";
 import { CalendarMenu } from "./CalendarMenu";
 import { MonthCloseUp } from "./MonthCloseUp";
 import { MonthFull } from "./MonthFull";
@@ -21,6 +23,9 @@ import type { MonthViewProps } from "./MonthView";
 
 const TITLE_GRID_GAP = 12; // matches the gap-3 between title and calendar body
 
+/** The open day page: the date, plus the cell rect the FLIP zoom grows out of (null → instant). */
+export type OpenDay = { date: string; rect: DOMRect | null };
+
 // Pinch thresholds (ratio of current finger distance to gesture-start distance).
 const SPREAD_RATIO = 1.2; // fingers apart → close-up (detail)
 const PINCH_RATIO = 0.83; // fingers together → full-month (overview)
@@ -29,6 +34,12 @@ function touchDistance(touches: TouchList): number {
   const a = touches[0];
   const b = touches[1];
   return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+/** The day cell's on-screen rect, so a stamp added from an empty day still zooms out of it. */
+function cellRect(date: string): DOMRect | null {
+  const el = document.querySelector<HTMLElement>(`[aria-label="${date}"]`);
+  return el ? el.getBoundingClientRect() : null;
 }
 
 function prefersReducedMotion(): boolean {
@@ -52,6 +63,9 @@ export function Calendar() {
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [openDay, setOpenDay] = useState<OpenDay | null>(null);
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<FitMetrics>({
     availW: 0,
     availH: 0,
@@ -60,6 +74,8 @@ export function Calendar() {
   });
 
   const mainRef = useRef<HTMLElement>(null);
+  // Read by the pinch handler without re-binding it (pinch isolation, decision 10).
+  const dayOpenRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -123,6 +139,11 @@ export function Calendar() {
   // Pinch (2-finger) gesture. We own pinch: touch-action:none on the surface +
   // preventDefault on 2-finger moves. The close-up scroller keeps touch-action:pan-x
   // so a single finger still scrolls columns.
+  //
+  // Pinch isolation (M6, belt and braces): while a day is open, a pinch belongs to the stamp
+  // being scaled, never to the calendar behind it. The overlay stops propagation AND this
+  // handler no-ops off a state check — a listener detail can be broken by a refactor; a state
+  // check cannot. `dayOpenRef` keeps the check live without re-binding the listeners.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
@@ -131,12 +152,14 @@ export function Calendar() {
     let fired = false;
 
     const onTouchStart = (e: TouchEvent) => {
+      if (dayOpenRef.current) return;
       if (e.touches.length === 2) {
         startDist = touchDistance(e.touches);
         fired = false;
       }
     };
     const onTouchMove = (e: TouchEvent) => {
+      if (dayOpenRef.current) return;
       if (e.touches.length !== 2 || startDist == null) return;
       e.preventDefault(); // suppress native pinch-zoom while we interpret it
       if (fired) return;
@@ -163,8 +186,39 @@ export function Calendar() {
     };
   }, []);
 
+  useEffect(() => {
+    dayOpenRef.current = openDay !== null || addingTo !== null;
+  }, [openDay, addingTo]);
+
+  // The system back gesture closes the day instead of leaving the app: opening a day pushes a
+  // history entry, popstate closes it. (Closing from inside the app pops it back off.)
+  useEffect(() => {
+    if (!openDay) return;
+    window.history.pushState({ day: openDay.date }, "");
+    const onPop = () => setOpenDay(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [openDay]);
+
+  const closeDay = () => {
+    setSelected(null);
+    // Pop our own guard entry; the popstate listener clears the overlay state.
+    if (window.history.state?.day) window.history.back();
+    else setOpenDay(null);
+  };
+
   const toggleView = () =>
     setView((v) => (v === "full-month" ? "close-up" : "full-month"));
+
+  const onOpenDay = (date: string, rect: DOMRect) => {
+    const day = data.get(date);
+    if (!day || day.stamps.length === 0) {
+      // US-7, literally: an empty day never shows an empty page — it opens the picker.
+      setAddingTo(date);
+      return;
+    }
+    setOpenDay({ date, rect });
+  };
 
   const viewProps: MonthViewProps = {
     year,
@@ -174,6 +228,7 @@ export function Calendar() {
     data,
     cellW,
     headerRef,
+    onOpenDay,
   };
 
   return (
@@ -220,6 +275,35 @@ export function Calendar() {
           onClose={() => setPickerOpen(false)}
           viewed={{ year, month }}
           onPick={(ym) => setYearMonth(ym)}
+        />
+      ) : null}
+
+      {addingTo ? (
+        <AddStampFlow
+          key={addingTo}
+          date={addingTo}
+          onPlaced={(stamp) => {
+            const date = addingTo;
+            setAddingTo(null);
+            // Back to the day with the new stamp placed, on top, and SELECTED — she just made
+            // it, it is the thing she is most likely to nudge, and it teaches the selection
+            // affordance with no tutorial (decision 12).
+            setOpenDay((prev) => prev ?? { date, rect: cellRect(date) });
+            setSelected(stamp.id);
+          }}
+          onCancel={() => setAddingTo(null)}
+        />
+      ) : null}
+
+      {openDay ? (
+        <DayPage
+          date={openDay.date}
+          fromRect={openDay.rect}
+          dayNumber={Number(openDay.date.slice(8))}
+          selected={selected}
+          onSelect={setSelected}
+          onAddStamp={() => setAddingTo(openDay.date)}
+          onClose={closeDay}
         />
       ) : null}
     </main>

@@ -13,14 +13,14 @@ import { decodeForCutter } from "@/lib/stamp/decode";
 import { fitWindow } from "@/lib/stamp/geometry";
 import { CutterController, type CutterState } from "@/lib/stamp/gestures";
 import { ingestStamp } from "@/lib/stamp/ingest-stamp";
-import { MASKS } from "@/lib/stamp/masks";
+import { MASKS, type MaskId } from "@/lib/stamp/masks";
 import { renderFrame } from "@/lib/stamp/render";
 
 export type StamperProps = {
   /** The picked photo (transient — decoded to frame, discarded on confirm). */
   file: File;
-  /** Called with the baked stamp's image id after a successful Cut. */
-  onConfirm: (imageId: string) => void;
+  /** Called with the baked stamp's image id + the shape she cut, after a successful Cut. */
+  onConfirm: (imageId: string, maskType: MaskId) => void;
   /** Called when the user backs out without cutting. */
   onCancel: () => void;
 };
@@ -182,7 +182,7 @@ export function Stamper({ file, onConfirm, onCancel }: StamperProps) {
     try {
       const bake = await bakeStamp(bmp, MASKS[maskIndex], controller.getState());
       const id = await ingestStamp(bake);
-      onConfirm(id);
+      onConfirm(id, MASKS[maskIndex].id);
     } catch (err) {
       setError(
         err instanceof ImagePipelineError ? `Cut failed: ${err.message}` : `Cut failed: ${String(err)}`,
