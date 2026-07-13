@@ -63,9 +63,6 @@ erDiagram
     uuid entry_id FK
     uuid image_id FK
     text mask_type
-    real crop_offset_x
-    real crop_offset_y
-    real crop_scale
     real pos_x
     real pos_y
     real scale
@@ -175,13 +172,10 @@ so **no migration is on M5's path**. `mask_type` is baked into the pixels and de
 | entry_id | uuid | NOT NULL, FK → entries(id) ON DELETE CASCADE | The day this stamp lives on. |
 | user_id | uuid | NOT NULL, FK → auth.users(id) ON DELETE CASCADE | Denormalized owner (RLS + sync). |
 | image_id | uuid | NOT NULL, FK → images(id) ON DELETE RESTRICT | The **baked** WebP-alpha stamp image (ADR-M5), not a raw source. |
-| mask_type | text | NOT NULL, default `'postage'`, CHECK in (`'postage'`,`'cloud'`,`'spiky'`,`'heart'`,`'circle'`,`'square'`,`'oval'`) | **Vestigial / optional metadata** — the mask is baked into the pixels; kept only to describe which shape was used. |
-| crop_offset_x | real | NOT NULL, default `0` | **Vestigial** (baked model — drop in M6). Was: pan X behind the mask. |
-| crop_offset_y | real | NOT NULL, default `0` | **Vestigial** (baked model — drop in M6). Was: pan Y behind the mask. |
-| crop_scale | real | NOT NULL, default `1`, CHECK `> 0` | **Vestigial** (baked model — drop in M6). Was: zoom behind the mask. |
-| pos_x | real | NOT NULL, default `0.5` | Placement X on the day canvas (normalized). |
-| pos_y | real | NOT NULL, default `0.5` | Placement Y on the day canvas (normalized). |
-| scale | real | NOT NULL, default `1`, CHECK `> 0` | Placement size. |
+| mask_type | text | NOT NULL, default `'postage'`, CHECK in (`'postage'`,`'cloud'`,`'spiky'`,`'heart'`,`'circle'`,`'square'`,`'oval'`) | **Baked-in metadata** — the mask is already in the pixels; this records *which shape she cut* (kept for per-mask polish later). |
+| pos_x | real | NOT NULL, default `0.5` | Stamp **center** X, normalized to the 7:6 day page (0..1). |
+| pos_y | real | NOT NULL, default `0.5` | Stamp **center** Y, normalized to the 7:6 day page (0..1). |
+| scale | real | NOT NULL, default `1`, CHECK `> 0` | Stamp **width as a fraction of the day page's width**; height follows from the baked image's own aspect (ALG-8). |
 | rotation_deg | smallint | NOT NULL, default `0`, CHECK in (0,45,…,315) | 45°-snapped rotation. |
 | layer_order | int | NOT NULL, default `0` | Explicit numeric front/back (syncs deterministically). |
 | created_at | timestamptz | NOT NULL, default `now()` |  |
@@ -329,16 +323,13 @@ create table stamps (
   user_id       uuid not null references auth.users(id) on delete cascade,
   image_id      uuid not null references images(id) on delete restrict,
   -- ADR-M5 destructive/baked cutter: image_id is the BAKED WebP-alpha stamp.
-  -- mask_type is optional metadata; crop_* are vestigial and scheduled to drop in M6
-  -- (M6 is the first writer of stamps; harmless until then — no migration on M5's path).
+  -- mask_type is baked-in metadata (which shape she cut). The crop_* columns were
+  -- dropped in M6 (20260712000000_m6_stamps_drop_crop.sql) — the crop lives in the pixels.
   mask_type     text not null default 'postage'
                   check (mask_type in ('postage','cloud','spiky','heart','circle','square','oval')),
-  crop_offset_x real not null default 0,   -- vestigial (baked); drop in M6
-  crop_offset_y real not null default 0,   -- vestigial (baked); drop in M6
-  crop_scale    real not null default 1 check (crop_scale > 0),  -- vestigial (baked); drop in M6
-  pos_x         real not null default 0.5,
+  pos_x         real not null default 0.5,   -- stamp center, normalized to the 7:6 day page
   pos_y         real not null default 0.5,
-  scale         real not null default 1 check (scale > 0),
+  scale         real not null default 1 check (scale > 0),  -- width / day-page width
   rotation_deg  smallint not null default 0
                   check (rotation_deg in (0,45,90,135,180,225,270,315)),
   layer_order   int not null default 0,

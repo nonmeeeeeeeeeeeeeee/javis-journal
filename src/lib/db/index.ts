@@ -49,6 +49,12 @@ export class JournalDB extends Dexie {
     this.version(3).stores({
       entries: "id, entry_date",
     });
+
+    // v4 (M6): the `Stamp` type loses crop_offset_x/crop_offset_y/crop_scale (the crop is
+    // baked into the pixels — ADR-M5; the matching Postgres migration drops the columns).
+    // No index or data change: M6 is the first writer of `stamps`, so no rows exist. The
+    // bump exists so a device that somehow holds a pre-M6 row upgrades cleanly.
+    this.version(4).stores({});
   }
 }
 

@@ -82,9 +82,16 @@ graph TD
 - **Compressed-only to cloud** — only the ~2048px image + 256px thumbnail are uploaded;
   the true original stays client-side (IndexedDB). Keeps the free tier alive for years
   (~6 years at 1 photo/day; ~2 years at 3/day).
-- **Long-press context menu, no drag-handles** — resize / rotate / front-back / delete are
-  explicit long-press menu actions (for stamps **and** stickers), removing the
-  resize-drag-vs-canvas-pan gesture conflict — the #1 phone design risk.
+- **Select-then-manipulate, no menu and no drag-handles** *(ADR-M6 — reverses the earlier
+  "long-press context menu")* — a **long-press selects** a stamp (blue shadow); only then does
+  one finger drag it and two fingers pinch/twist it (snapping to 45° on release). A short **tap
+  on any stamp toggles front/back** — that is the whole layer-order UI — and a floating **✕** on
+  the selection deletes it (with an Undo toast). Selection is the gate that removes the
+  drag-vs-pan conflict (the #1 phone design risk) *and* stops a fat thumb from knocking a
+  finished composition askew; a menu of commands would have been a second UI to learn on top of
+  gestures she already knows from every photo app. Hit-testing is our own math (inverse-rotate →
+  bounding box → highest `layer_order`), because a baked heart's transparent corner would let the
+  DOM steal a tap from the stamp visibly underneath.
 - **Max 3 stamps per calendar day** — bounds composition, memory, and hit-testing; keeps
   entries simple and the editor reliable. (An in-app calendar day, not a real day.)
 - **Stickers = one global calendar layer** — the same stickers float across every month;
