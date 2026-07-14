@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/browser";
 /**
  * The 3-dots menu (US-2/US-3/US-4/US-10). Four live items:
  *   • Toggle full-month view   • Change month
- *   • Frame: 3 swatches + None (M8)    • Logout
+ *   • Frame: 3 swatches (re-tap the worn one to go bare)    • Logout
  * Download PNG (M9) is omitted until its milestone. A frame change keeps the menu open so the
  * change is visible behind it; the other actions close it.
  */
@@ -77,11 +77,8 @@ export function CalendarMenu({
             the real CSS path, so there is nothing to keep in sync with the calendar. Tapping
             keeps the menu open: the month re-frames behind it and she sees it land.
 
-            Four swatches, because bare is a real choice and not just the absence of one. It has
-            a tappable identity of its own (dashed = "nothing here"; a solid hairline would read
-            as a thin frame), AND the fast path: tapping the frame she is already WEARING takes
-            it off. Re-tapping None does nothing — you leave it by tapping a frame, always one
-            tap, so nothing is ever trapped. */}
+            Bare has no swatch of its own: it is reached by re-tapping the frame she is already
+            WEARING, which takes it off. Nothing is ever trapped — one tap in, one tap out. */}
         <div className="px-4 py-3">
           <span className="text-sm font-semibold text-ink">Frame</span>
           <div
@@ -99,12 +96,6 @@ export function CalendarMenu({
                 style={frameCss(id, 1)}
               />
             ))}
-            <FrameSwatch
-              label="None"
-              selected={selectedFrame === "none"}
-              onClick={() => onSetFrame("none")}
-              className="border border-dashed border-line"
-            />
           </div>
         </div>
 
@@ -119,22 +110,19 @@ export function CalendarMenu({
 }
 
 /**
- * One frame choice. `size-10` (not M8's `size-11`): four 44px swatches plus three 8px gaps is
- * 200px, and the `w-56` menu's `px-4` leaves 192px of content — 40px fits with room to spare, and
- * the button's own `p-1` keeps the touch target honest.
+ * One frame choice. `size-10`: three swatches plus their gaps sit well inside the content width
+ * the `w-56` menu's `px-4` leaves, and the button's own `p-1` keeps the touch target honest.
  */
 function FrameSwatch({
   label,
   selected,
   onClick,
   style,
-  className = "",
 }: {
   label: string;
   selected: boolean;
   onClick: () => void;
   style?: React.CSSProperties;
-  className?: string;
 }) {
   return (
     <button
@@ -147,11 +135,7 @@ function FrameSwatch({
         selected ? "bg-accent-soft" : "hover:bg-accent-soft"
       }`}
     >
-      <span
-        className={`block size-10 bg-paper ${className}`}
-        style={style}
-        aria-hidden
-      />
+      <span className="block size-10 bg-paper" style={style} aria-hidden />
       <span
         className={`text-[10px] font-bold ${selected ? "text-ink" : "text-muted"}`}
       >
