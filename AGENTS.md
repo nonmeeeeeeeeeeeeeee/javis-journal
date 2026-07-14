@@ -113,9 +113,12 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       bump** (the schema stays M7's v5): `profiles.selected_frame` already existed and already
       synced. Verified by 227 vitest tests (pre-merge); dev harness at `/dev/frames`. Tier-2
       (real-device) is an owner gate.
-      **Addendum — `'none'`** (`plans/M8-FRAME-NONE.md`): she can wear no frame. Tapping the swatch
-      she already wears takes the frame off, and a fourth dashed **None** swatch gives bare a
-      tappable identity. `'none'` is a fourth value in the column (CHECK widened — **owner must run
+      **Addendum — `'none'`** (`plans/M8-FRAME-NONE.md`): she can wear no frame. Bare is reached by
+      **re-tapping the swatch she already wears**, which takes the frame off — and that is the *only*
+      way in: the plan's fourth dashed **None** swatch was built, then **removed** from the 3-dots
+      menu (the frame row is the three real swatches, `FRAME_IDS.map`). One tap out, one tap back in,
+      so nothing is trapped; the cost is that while bare, no swatch reads as selected and the state
+      is legible only from the calendar itself. `'none'` is a fourth value in the column (CHECK widened — **owner must run
       `supabase db push`**), never a null and never a second boolean: the client reads
       `?? DEFAULT_FRAME`, where the `??` means *no profile row yet*, so a null would silently
       restore Ruby. The types split — **`FrameId`** (the three real frames, the keys of `FRAMES`)
