@@ -88,4 +88,29 @@ describe("setSelectedFrame", () => {
     expect(row.selected_frame).toBe("rse");
     expect(row.updated_at >= first).toBe(true);
   });
+
+  test("'none' is a real stored choice, not an absence", async () => {
+    await db.profiles.put(profileRow({ selected_frame: "hgss_15" }));
+
+    await setSelectedFrame("none");
+
+    const row = (await db.profiles.toCollection().first())!;
+    expect(row.selected_frame).toBe("none");
+    expect(markDirty).toHaveBeenCalledWith("profiles", USER, "upsert");
+  });
+
+  test("re-selecting the frame she already wears is a no-op — nothing is dirtied", async () => {
+    // The menu's re-tap gesture turns a worn frame OFF, so it never reaches here with the same
+    // value; a re-tapped 'none' does. Either way a double-tap must not spam the sync outbox.
+    for (const frame of ["rse", "none"] as const) {
+      await db.profiles.put(profileRow({ selected_frame: frame }));
+      vi.clearAllMocks();
+
+      await setSelectedFrame(frame);
+
+      const row = (await db.profiles.toCollection().first())!;
+      expect(row.updated_at).toBe("2026-07-01T00:00:00.000Z"); // untouched
+      expect(markDirty).not.toHaveBeenCalled();
+    }
+  });
 });

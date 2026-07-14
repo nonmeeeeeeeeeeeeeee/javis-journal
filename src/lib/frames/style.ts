@@ -28,6 +28,10 @@ import { FRAMES } from "./spec";
  * `overflow-hidden` parent, that clips the outer scallops clean off. See M8-PLAN's deviation.)
  */
 export function frameCss(frame: SelectedFrame, scale: number): CSSProperties {
+  // `'none'`: no ring, no border box to reserve. FramedGrid still mounts — it is M9's export
+  // target — it just wears nothing.
+  if (frame === "none") return {};
+
   const { src, ink, slice } = FRAMES[frame];
   const px = (n: number) => `${n * scale}px`;
 

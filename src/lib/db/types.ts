@@ -9,7 +9,17 @@ export type MaskType =
 
 export type RotationDeg = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 
-export type SelectedFrame = "rse" | "hgss_15" | "hgss_18";
+/** The three real Pokémon frames — the keys of `FRAMES`, the ones with a spec and an asset. */
+export type FrameId = "rse" | "hgss_15" | "hgss_18";
+
+/**
+ * What `profiles.selected_frame` holds: a frame, or `'none'` — she can wear no frame at all.
+ *
+ * The split from {@link FrameId} is load-bearing. `FRAMES` stays keyed on `FrameId`, so any code
+ * that does `FRAMES[frame]` without first narrowing `'none'` away fails to compile — the compiler,
+ * not a reviewer, is what makes every consumer handle the bare calendar.
+ */
+export type SelectedFrame = FrameId | "none";
 
 export type AllowedEmail = {
   email: string;

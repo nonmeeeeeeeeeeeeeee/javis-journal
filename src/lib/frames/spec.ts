@@ -4,13 +4,13 @@
 // being self-consistent. Pure: no React, no Dexie, no DOM — the CSS path in Calendar.tsx and
 // M9's canvas export both read this.
 
-import type { SelectedFrame } from "@/lib/db/types";
+import type { FrameId, SelectedFrame } from "@/lib/db/types";
 
 /** Per-side px, T/R/B/L. Source pixels in a spec; device px once scaled. */
 export type Insets = { t: number; r: number; b: number; l: number };
 
 export type FrameSpec = {
-  id: SelectedFrame;
+  id: FrameId;
   /** Menu label. */
   label: string;
   /** Public path of the 9-slice tile sheet. */
@@ -34,10 +34,14 @@ export type FrameSpec = {
   slice: Insets;
 };
 
-/** The column's own default (SCHEMA: `profiles.selected_frame default 'rse'`). */
-export const DEFAULT_FRAME: SelectedFrame = "rse";
+/**
+ * The column's own default (SCHEMA: `profiles.selected_frame default 'rse'`). A `FrameId`, never
+ * `'none'`: this is what a journal wears when there is no profile row YET (first boot, pre-sync),
+ * which is not at all the same thing as her having chosen to go bare.
+ */
+export const DEFAULT_FRAME: FrameId = "rse";
 
-export const FRAMES: Record<SelectedFrame, FrameSpec> = {
+export const FRAMES: Record<FrameId, FrameSpec> = {
   rse: {
     id: "rse",
     label: "Ruby",
@@ -70,8 +74,8 @@ export const FRAMES: Record<SelectedFrame, FrameSpec> = {
   },
 };
 
-/** Menu order. */
-export const FRAME_IDS = Object.keys(FRAMES) as SelectedFrame[];
+/** Menu order — the real frames only; `'none'` is a choice, not a spec. */
+export const FRAME_IDS = Object.keys(FRAMES) as FrameId[];
 
 /**
  * Stepped **integer** scale: ×2 phone / ×3 tablet / ×4 desktop. Nearest-neighbour is exact at
@@ -102,6 +106,7 @@ export function frameInsets(
   frame: SelectedFrame,
   scale: number,
 ): { w: number; h: number } {
+  if (frame === "none") return { w: 0, h: 0 };
   const { ink } = FRAMES[frame];
   return { w: ink.l * scale, h: ink.t * scale };
 }
@@ -114,6 +119,9 @@ export function frameBoxInsets(
   frame: SelectedFrame,
   scale: number,
 ): { w: number; h: number } {
+  // No ring means no mat either: the mat exists to keep pixel scallops off the grid's hairlines,
+  // and with nothing to separate, the grid IS the box. fit.ts reads this as its `0 = no frame`.
+  if (frame === "none") return { w: 0, h: 0 };
   const { ink } = FRAMES[frame];
   return { w: (ink.l + FRAME_MAT) * scale, h: (ink.t + FRAME_MAT) * scale };
 }

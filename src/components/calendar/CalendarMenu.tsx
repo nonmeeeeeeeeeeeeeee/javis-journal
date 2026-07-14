@@ -8,19 +8,17 @@ import { frameCss } from "@/lib/frames/style";
 import { createClient } from "@/lib/supabase/browser";
 
 /**
- * The 3-dots menu (US-2/US-3/US-4/US-10). Five live items:
+ * The 3-dots menu (US-2/US-3/US-4/US-10). Four live items:
  *   • Toggle full-month view   • Change month
- *   • Week starts: Mon / Sun    • Frame: 3 swatches (M8)    • Logout
- * Download PNG (M9) is omitted until its milestone. Week-start and frame changes keep the
- * menu open so the change is visible behind it; the other actions close it.
+ *   • Frame: 3 swatches + None (M8)    • Logout
+ * Download PNG (M9) is omitted until its milestone. A frame change keeps the menu open so the
+ * change is visible behind it; the other actions close it.
  */
 export function CalendarMenu({
   open,
   onClose,
   onToggleView,
   onChangeMonth,
-  startOfWeek,
-  onSetWeekStart,
   selectedFrame,
   onSetFrame,
 }: {
@@ -28,8 +26,6 @@ export function CalendarMenu({
   onClose: () => void;
   onToggleView: () => void;
   onChangeMonth: () => void;
-  startOfWeek: number;
-  onSetWeekStart: (value: number) => void;
   selectedFrame: SelectedFrame;
   onSetFrame: (frame: SelectedFrame) => void;
 }) {
@@ -77,37 +73,15 @@ export function CalendarMenu({
 
         <Divider />
 
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold text-ink">Week starts</span>
-          <div
-            className="flex gap-1 rounded-control border border-line bg-accent-soft p-1"
-            role="group"
-            aria-label="Week start day"
-          >
-            {[
-              { value: 1, label: "Mon" },
-              { value: 7, label: "Sun" },
-            ].map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={startOfWeek === value}
-                onClick={() => onSetWeekStart(value)}
-                className={`rounded-control px-3 py-1 text-xs font-bold transition-colors ${
-                  startOfWeek === value ? "bg-ink text-paper" : "text-muted"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Divider />
-
         {/* US-10. Each swatch WEARS its own frame at ×1 — the preview is the real asset through
             the real CSS path, so there is nothing to keep in sync with the calendar. Tapping
-            keeps the menu open: the month re-frames behind it and she sees it land. */}
+            keeps the menu open: the month re-frames behind it and she sees it land.
+
+            Four swatches, because bare is a real choice and not just the absence of one. It has
+            a tappable identity of its own (dashed = "nothing here"; a solid hairline would read
+            as a thin frame), AND the fast path: tapping the frame she is already WEARING takes
+            it off. Re-tapping None does nothing — you leave it by tapping a frame, always one
+            tap, so nothing is ever trapped. */}
         <div className="px-4 py-3">
           <span className="text-sm font-semibold text-ink">Frame</span>
           <div
@@ -116,31 +90,21 @@ export function CalendarMenu({
             aria-label="Calendar frame"
           >
             {FRAME_IDS.map((id) => (
-              <button
+              <FrameSwatch
                 key={id}
-                type="button"
-                role="radio"
-                aria-checked={selectedFrame === id}
-                aria-label={FRAMES[id].label}
-                onClick={() => onSetFrame(id)}
-                className={`flex flex-col items-center gap-1 rounded-control p-1 transition-colors ${
-                  selectedFrame === id ? "bg-accent-soft" : "hover:bg-accent-soft"
-                }`}
-              >
-                <span
-                  className="block size-11 bg-paper"
-                  style={frameCss(id, 1)}
-                  aria-hidden
-                />
-                <span
-                  className={`text-[10px] font-bold ${
-                    selectedFrame === id ? "text-ink" : "text-muted"
-                  }`}
-                >
-                  {FRAMES[id].label}
-                </span>
-              </button>
+                label={FRAMES[id].label}
+                selected={selectedFrame === id}
+                // The re-tap: wearing it already means she wants it off.
+                onClick={() => onSetFrame(selectedFrame === id ? "none" : id)}
+                style={frameCss(id, 1)}
+              />
             ))}
+            <FrameSwatch
+              label="None"
+              selected={selectedFrame === "none"}
+              onClick={() => onSetFrame("none")}
+              className="border border-dashed border-line"
+            />
           </div>
         </div>
 
@@ -151,6 +115,49 @@ export function CalendarMenu({
         </MenuButton>
       </div>
     </div>
+  );
+}
+
+/**
+ * One frame choice. `size-10` (not M8's `size-11`): four 44px swatches plus three 8px gaps is
+ * 200px, and the `w-56` menu's `px-4` leaves 192px of content — 40px fits with room to spare, and
+ * the button's own `p-1` keeps the touch target honest.
+ */
+function FrameSwatch({
+  label,
+  selected,
+  onClick,
+  style,
+  className = "",
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-label={label}
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1 rounded-control p-1 transition-colors ${
+        selected ? "bg-accent-soft" : "hover:bg-accent-soft"
+      }`}
+    >
+      <span
+        className={`block size-10 bg-paper ${className}`}
+        style={style}
+        aria-hidden
+      />
+      <span
+        className={`text-[10px] font-bold ${selected ? "text-ink" : "text-muted"}`}
+      >
+        {label}
+      </span>
+    </button>
   );
 }
 

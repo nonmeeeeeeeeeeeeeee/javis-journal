@@ -12,7 +12,7 @@ import {
   type YearMonth,
 } from "@/lib/calendar/month-grid";
 import { useMonthData, useProfile } from "@/lib/db/queries";
-import { placeSticker, setSelectedFrame, setStartOfWeek } from "@/lib/db/mutations";
+import { placeSticker, setSelectedFrame } from "@/lib/db/mutations";
 import { frameBoxInsets, frameScale } from "@/lib/frames/spec";
 import { seedStickers } from "@/lib/sticker/seed";
 import { repairStickerThumbs } from "@/lib/image/repair-sticker-thumbs";
@@ -355,8 +355,6 @@ export function Calendar() {
         onClose={() => setMenuOpen(false)}
         onToggleView={toggleView}
         onChangeMonth={() => setPickerOpen(true)}
-        startOfWeek={profile.startOfWeek}
-        onSetWeekStart={(value) => void setStartOfWeek(value)}
         selectedFrame={profile.selectedFrame}
         onSetFrame={(frame) => void setSelectedFrame(frame)}
       />

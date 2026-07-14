@@ -12,6 +12,10 @@ import { frameCss } from "@/lib/frames/style";
  * everywhere it matters — full-month, the close-up scroller (where it scrolls with the columns),
  * and the downloaded PNG — so M9 rasterizes exactly the element she has been looking at rather
  * than reconstructing a crop rule from CSS.
+ *
+ * This is why the wrapper mounts even when the frame is `'none'`: an unframed month is the framed
+ * box wearing nothing, not the absence of the box. Let it vanish with the ring and M9's export
+ * target vanishes with it.
  */
 export const MONTH_FRAME_ATTR = "data-month-frame";
 
@@ -41,7 +45,8 @@ export function FramedGrid({
       style={{
         boxSizing: "content-box",
         width,
-        padding: FRAME_MAT * scale, // the paper mat between the ring and the grid
+        // The paper mat between the ring and the grid — and with no ring, nothing to separate.
+        padding: frame === "none" ? 0 : FRAME_MAT * scale,
         ...frameCss(frame, scale),
       }}
     >

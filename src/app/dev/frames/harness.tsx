@@ -65,12 +65,14 @@ export function FramesHarness() {
       <section className="mt-10">
         <h2 className="mb-2 font-title text-lg">9-slice rects (the M9 export seam)</h2>
         <pre className="overflow-x-auto rounded-card border border-line bg-paper p-3 text-[11px] leading-tight">
-          {nineSliceRects(FRAMES[frame], 390, 300, liveScale)
-            .map(
-              (p) =>
-                `${p.key.padEnd(2)}  src ${fmt(p.src)}  dst ${fmt(p.dst)}  tiles ${p.tiles ?? "-"}`,
-            )
-            .join("\n")}
+          {frame === "none"
+            ? "no frame — the export draws the grid and no ring"
+            : nineSliceRects(FRAMES[frame], 390, 300, liveScale)
+                .map(
+                  (p) =>
+                    `${p.key.padEnd(2)}  src ${fmt(p.src)}  dst ${fmt(p.dst)}  tiles ${p.tiles ?? "-"}`,
+                )
+                .join("\n")}
         </pre>
       </section>
 
@@ -88,6 +90,7 @@ export function FramesHarness() {
                 {FRAMES[id].label}
               </option>
             ))}
+            <option value="none">None</option>
           </select>
         </div>
         {/* The real component the calendar and the M9 export both use — not a lookalike. */}

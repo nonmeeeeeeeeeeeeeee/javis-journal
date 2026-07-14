@@ -109,10 +109,23 @@ execution plan lands in `Wiki Javi's Journal/plans/M{N}-PLAN.md` (see Methodolog
       overhang into the 24px `GUTTER` (free), the top edge is paid for (the title is above it) —
       so **`cellW` on a phone is bit-identical with and without a frame**. `border-image-outset`
       is **0**: the slice surplus (the fat corner) overhangs *inward* over the transparent mat,
-      never outward off-screen (the plan had this backwards; caught by rendering it). **No
-      migration and no Dexie bump** (M8 adds neither — the schema stays M7's v5):
-      `profiles.selected_frame` already existed and already synced. Verified by 227 vitest tests
-      (pre-merge); dev harness at `/dev/frames`. Tier-2 (real-device) is an owner gate.
+      never outward off-screen (the plan had this backwards; caught by rendering it). **No Dexie
+      bump** (the schema stays M7's v5): `profiles.selected_frame` already existed and already
+      synced. Verified by 227 vitest tests (pre-merge); dev harness at `/dev/frames`. Tier-2
+      (real-device) is an owner gate.
+      **Addendum — `'none'`** (`plans/M8-FRAME-NONE.md`): she can wear no frame. Tapping the swatch
+      she already wears takes the frame off, and a fourth dashed **None** swatch gives bare a
+      tappable identity. `'none'` is a fourth value in the column (CHECK widened — **owner must run
+      `supabase db push`**), never a null and never a second boolean: the client reads
+      `?? DEFAULT_FRAME`, where the `??` means *no profile row yet*, so a null would silently
+      restore Ruby. The types split — **`FrameId`** (the three real frames, the keys of `FRAMES`)
+      vs **`SelectedFrame = FrameId | "none"`** (what the DB holds) — so `FRAMES[frame]` without
+      narrowing fails to compile and the compiler, not a reviewer, forces every consumer to handle
+      the bare case. `FramedGrid` still **mounts** under `'none'` (it owns `data-month-frame`, M9's
+      export target: an unframed month is the framed box wearing nothing, not the absence of the
+      box). Layout is a no-op on a phone — under the per-edge rule only the top ink is paid for, so
+      `cellW` is bit-identical. Still no Dexie bump (an unindexed value column's domain widening).
+      281 vitest tests.
 - [ ] M9 — PNG export (US-12)
 - [ ] M10 — Stability gate + polish + ship (US-13 hard gate, US-14)
 

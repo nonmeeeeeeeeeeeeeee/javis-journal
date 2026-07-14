@@ -65,6 +65,10 @@ export async function setSelectedFrame(frame: SelectedFrame): Promise<void> {
   const now = new Date().toISOString();
   const existing = await db.profiles.toCollection().first();
 
+  // Idempotent: re-tapping the swatch she is already wearing must not dirty the row. The menu's
+  // re-tap gesture means "take it off" for a frame, and simply nothing for `'none'`.
+  if (existing?.selected_frame === frame) return;
+
   let userId = existing?.user_id;
   if (!userId) {
     const supabase = createClient();

@@ -3,7 +3,15 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { DEFAULT_FRAME, FRAMES, FRAME_IDS, frameInsets, frameScale } from "./spec";
+import {
+  DEFAULT_FRAME,
+  FRAMES,
+  FRAME_IDS,
+  frameBoxInsets,
+  frameInsets,
+  frameScale,
+} from "./spec";
+import { frameCss } from "./style";
 
 /** IHDR width/height + byte size of a shipped asset. Enough to prove the spec matches the PNG. */
 function readPng(src: string) {
@@ -70,6 +78,16 @@ describe("frame helpers", () => {
     expect(frameInsets("hgss_15", 2)).toEqual({ w: 20, h: 12 });
     expect(frameInsets("hgss_18", 2)).toEqual({ w: 22, h: 8 });
     expect(frameInsets("rse", 4)).toEqual({ w: 24, h: 24 });
+  });
+
+  test("'none' costs layout nothing and draws nothing", () => {
+    // The bare calendar. `frameBoxInsets` is what fit.ts consumes as its documented `0 = no
+    // frame`, so these three zeroes ARE the "no reflow when she takes the frame off" guarantee.
+    for (const scale of [2, 3, 4]) {
+      expect(frameInsets("none", scale)).toEqual({ w: 0, h: 0 });
+      expect(frameBoxInsets("none", scale)).toEqual({ w: 0, h: 0 });
+      expect(frameCss("none", scale)).toEqual({}); // no border, no mat, no image
+    }
   });
 
   test("every frame's ink fits inside fit.ts's 24px gutter at phone scale (×2)", () => {

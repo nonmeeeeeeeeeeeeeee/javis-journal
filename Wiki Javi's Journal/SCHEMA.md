@@ -120,7 +120,7 @@ Per-user settings; 1:1 with `auth.users`.
 |--------|------|-------------|-------|
 | user_id | uuid | PK, FK → auth.users(id) ON DELETE CASCADE | The owner. |
 | start_of_week | smallint | NOT NULL, default `1`, CHECK `between 1 and 7` | ISO day-of-week; 1 = Monday (default), changeable. |
-| selected_frame | text | NOT NULL, default `'rse'`, CHECK in (`'rse'`,`'hgss_15'`,`'hgss_18'`) | The 3 Pokémon border frames. |
+| selected_frame | text | NOT NULL, default `'rse'`, CHECK in (`'rse'`,`'hgss_15'`,`'hgss_18'`,`'none'`) | The 3 Pokémon border frames, plus `'none'` — a bare calendar is a choice she makes, never a default. |
 | fireworks_seen | boolean | NOT NULL, default `false` | Set true after the first-open birthday fireworks play. |
 | created_at | timestamptz | NOT NULL, default `now()` |  |
 | updated_at | timestamptz | NOT NULL, default `now()` | Client-authored on settings sync (LWW). |
@@ -310,7 +310,7 @@ create table profiles (
   user_id        uuid primary key references auth.users(id) on delete cascade,
   start_of_week  smallint not null default 1 check (start_of_week between 1 and 7),
   selected_frame text not null default 'rse'
-                   check (selected_frame in ('rse','hgss_15','hgss_18')),
+                   check (selected_frame in ('rse','hgss_15','hgss_18','none')),
   fireworks_seen boolean not null default false,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
