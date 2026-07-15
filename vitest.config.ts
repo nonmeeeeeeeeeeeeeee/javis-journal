@@ -12,6 +12,11 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
+    // On-demand TS transform of the growing suite can spike a cold dynamic import() past the
+    // stock 5s per-test timeout under CPU contention (e.g. the seed.ts import in
+    // sticker-writes.test.ts). This is transform latency, not slow assertions — give every test
+    // headroom so a saturated machine can't flake a green suite red.
+    testTimeout: 20000,
     // Never scan git worktrees created by /parallel-plan agents under .claude/.
     exclude: [...configDefaults.exclude, ".claude/**"],
   },
