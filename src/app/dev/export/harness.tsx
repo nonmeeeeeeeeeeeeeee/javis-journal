@@ -6,7 +6,8 @@ import { db } from "@/lib/db";
 import type { Entry, ImageRow, PlacedSticker, SelectedFrame, Stamp } from "@/lib/db/types";
 import type { ImageBlobRow } from "@/lib/db/image-types";
 import { FRAME_IDS, FRAMES } from "@/lib/frames/spec";
-import { composeMonthPng, exportMonthPng } from "@/lib/export/exportMonthPng";
+import { composeMonthPng } from "@/lib/export/exportMonthPng";
+import { downloadBlob, exportFilename, shareBlob } from "@/lib/export/save";
 
 const YEAR = 2026;
 const MONTH = 7;
@@ -267,13 +268,31 @@ export function ExportHarness() {
         >
           Re-render
         </button>
+        {/* The two real save paths, exercised independently — this is where the iOS
+            download-vs-Save-to-Photos behaviour gets checked on the phone. */}
         <button
           type="button"
-          onClick={() => void exportMonthPng(YEAR, MONTH, WEEK_START, frame, includeTitle)}
+          onClick={() =>
+            void composeMonthPng(YEAR, MONTH, WEEK_START, frame, includeTitle).then((b) =>
+              shareBlob(b, exportFilename(YEAR, MONTH)),
+            )
+          }
           disabled={busy}
           className="rounded-control border border-line px-3 py-1.5 text-sm font-bold disabled:opacity-60"
         >
-          Share / download (real save path)
+          Share (share sheet)
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            void composeMonthPng(YEAR, MONTH, WEEK_START, frame, includeTitle).then((b) =>
+              downloadBlob(b, exportFilename(YEAR, MONTH)),
+            )
+          }
+          disabled={busy}
+          className="rounded-control border border-line px-3 py-1.5 text-sm font-bold disabled:opacity-60"
+        >
+          Save (download)
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { exportFilename, saveExport } from "./save";
+import { canShareFiles, downloadBlob, exportFilename, shareBlob } from "./save";
 
 const PNG = new Blob(["png"], { type: "image/png" });
 
@@ -25,7 +25,7 @@ function stubDocument() {
 }
 
 beforeEach(() => {
-  // Node 20 has a global File; ensure it exists for the share path.
+  // Node 20 has a global File; ensure it exists for the share/probe paths.
   if (typeof File === "undefined") {
     vi.stubGlobal("File", class {});
   }
@@ -41,58 +41,70 @@ test("filename is javis-journal-YYYY-MM.png with a zero-padded month", () => {
   expect(exportFilename(2026, 12)).toBe("javis-journal-2026-12.png");
 });
 
-test("shares a file when canShare({files}) is true", async () => {
+// ---- canShareFiles (the Share-button gate) ----
+
+test("canShareFiles is true when share + canShare({files}) are supported", () => {
+  vi.stubGlobal("navigator", { share: vi.fn(), canShare: () => true });
+  expect(canShareFiles()).toBe(true);
+});
+
+test("canShareFiles is false when canShare reports files aren't shareable", () => {
+  vi.stubGlobal("navigator", { share: vi.fn(), canShare: () => false });
+  expect(canShareFiles()).toBe(false);
+});
+
+test("canShareFiles is false when there is no share API at all (desktop)", () => {
+  vi.stubGlobal("navigator", {});
+  expect(canShareFiles()).toBe(false);
+});
+
+// ---- shareBlob ----
+
+test("shareBlob resolves 'shared' when the share sheet completes", async () => {
   const share = vi.fn(async () => undefined);
   vi.stubGlobal("navigator", { share, canShare: () => true });
-  const anchor = stubDocument();
 
-  await saveExport(PNG, 2026, 7);
-
-  expect(share).toHaveBeenCalledOnce();
+  await expect(shareBlob(PNG, "m.png")).resolves.toBe("shared");
   const arg = share.mock.calls[0][0] as { files: File[]; title: string };
   expect(arg.files).toHaveLength(1);
-  expect(arg.title).toBe("javis-journal-2026-07.png");
-  expect(anchor.click).not.toHaveBeenCalled(); // no download fallback
+  expect(arg.title).toBe("m.png");
 });
 
-test("downloads via <a download> when canShare returns false (share exists but can't share files)", async () => {
-  const share = vi.fn(async () => undefined);
-  vi.stubGlobal("navigator", { share, canShare: () => false });
-  const anchor = stubDocument();
-
-  await saveExport(PNG, 2026, 7);
-
-  expect(share).not.toHaveBeenCalled();
-  expect(anchor.click).toHaveBeenCalledOnce();
-  expect(anchor.download).toBe("javis-journal-2026-07.png");
-});
-
-test("downloads when navigator has no share API at all (desktop)", async () => {
-  vi.stubGlobal("navigator", {});
-  const anchor = stubDocument();
-
-  await saveExport(PNG, 2026, 7);
-  expect(anchor.click).toHaveBeenCalledOnce();
-});
-
-test("an AbortError (she dismissed the sheet) is swallowed — no download fallback", async () => {
+test("shareBlob resolves 'dismissed' on an AbortError (she backed out)", async () => {
   const share = vi.fn(async () => {
     throw Object.assign(new Error("dismissed"), { name: "AbortError" });
   });
   vi.stubGlobal("navigator", { share, canShare: () => true });
-  const anchor = stubDocument();
 
-  await expect(saveExport(PNG, 2026, 7)).resolves.toBeUndefined();
-  expect(anchor.click).not.toHaveBeenCalled();
+  await expect(shareBlob(PNG, "m.png")).resolves.toBe("dismissed");
 });
 
-test("a non-Abort share error falls back to the download", async () => {
+test("shareBlob rejects on a non-Abort error — no silent download fallback", async () => {
   const share = vi.fn(async () => {
     throw Object.assign(new Error("boom"), { name: "NotAllowedError" });
   });
   vi.stubGlobal("navigator", { share, canShare: () => true });
   const anchor = stubDocument();
 
-  await saveExport(PNG, 2026, 7);
+  await expect(shareBlob(PNG, "m.png")).rejects.toThrow("boom");
+  expect(anchor.click).not.toHaveBeenCalled(); // never crosses over to a download
+});
+
+test("shareBlob rejects when the share API is absent", async () => {
+  vi.stubGlobal("navigator", {});
+  await expect(shareBlob(PNG, "m.png")).rejects.toThrow();
+});
+
+// ---- downloadBlob ----
+
+test("downloadBlob triggers a direct <a download>, never the share sheet", () => {
+  const share = vi.fn();
+  vi.stubGlobal("navigator", { share, canShare: () => true });
+  const anchor = stubDocument();
+
+  downloadBlob(PNG, "javis-journal-2026-07.png");
+
   expect(anchor.click).toHaveBeenCalledOnce();
+  expect(anchor.download).toBe("javis-journal-2026-07.png");
+  expect(share).not.toHaveBeenCalled();
 });

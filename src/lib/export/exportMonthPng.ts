@@ -1,7 +1,8 @@
-// M9 — the export orchestrator (M9-PLAN decision 12). Wires the four pure/seam layers into one
-// call: read the month from Dexie (`data.ts`, untainted blobs) → decode them off-thread in small
-// batches (`createImageBitmap`) → build the draw-op plan (`plan.ts`) → rasterize (`render.ts`) →
-// hand off the file (`save.ts`).
+// M9 — the export composer (M9-PLAN decision 12). Wires the pure/seam layers into one call: read
+// the month from Dexie (`data.ts`, untainted blobs) → decode them off-thread in small batches
+// (`createImageBitmap`) → build the draw-op plan (`plan.ts`) → rasterize (`render.ts`) → a PNG
+// `Blob`. The caller (ExportSheet / the harness) then hands that blob to `save.ts`'s explicit
+// `shareBlob` or `downloadBlob` — this module never decides between share and download.
 //
 // `year/month` are `Calendar`'s VIEWED `{year, month}` state, passed straight through — the export
 // never reads `todayISO()`. Non-blocking without a worker: `createImageBitmap` already decodes off
@@ -13,7 +14,6 @@ import type { SelectedFrame } from "@/lib/db/types";
 import { loadExportData } from "./data";
 import { buildExportPlan } from "./plan";
 import { renderExport, type ExportBitmaps, type ExportTokens } from "./render";
-import { saveExport } from "./save";
 
 /** How many blobs to decode in parallel — enough to be fast, few enough to bound peak memory. */
 const DECODE_BATCH = 6;
@@ -108,19 +108,4 @@ export async function composeMonthPng(
     for (const b of stamps.values()) b.close();
     for (const b of stickers.values()) b.close();
   }
-}
-
-/**
- * Export the VIEWED month: compose the PNG and hand it to the share sheet / download.
- * `year/month` is Calendar's viewed month state — never `todayISO()`.
- */
-export async function exportMonthPng(
-  year: number,
-  month: number,
-  weekStart: number,
-  frame: SelectedFrame,
-  includeTitle: boolean,
-): Promise<void> {
-  const blob = await composeMonthPng(year, month, weekStart, frame, includeTitle);
-  await saveExport(blob, year, month);
 }
