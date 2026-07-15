@@ -272,12 +272,18 @@ export async function pullAppendOnly<TTable extends AppendOnlyTable>(
 }
 
 export async function pullAll(): Promise<void> {
+  // Image metadata must land before any row that renders it. `getThumbUrls` needs the
+  // `images` row (for `thumb_path`) to mint a signed URL, and `useImageUrls` only re-resolves
+  // when its id-set changes — not when a late `images` row arrives. So if a `stamps`/
+  // `placed_stickers`/`sticker_assets` row won a cold-start race, its thumb stayed blank until
+  // a manual refresh. Pulling `images` first makes "metadata before its referents" an invariant
+  // of every cycle, so each live-query re-fire resolves against a populated `images` table.
+  await pullAppendOnly("images", "created_at");
   await Promise.all([
     pullLWW("entries"),
     pullLWW("stamps"),
     pullLWW("placed_stickers"),
     pullLWW("sticker_assets"),
     pullLWW("profiles"),
-    pullAppendOnly("images", "created_at"),
   ]);
 }
