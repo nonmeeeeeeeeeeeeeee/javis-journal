@@ -8,17 +8,18 @@ import { frameCss } from "@/lib/frames/style";
 import { createClient } from "@/lib/supabase/browser";
 
 /**
- * The 3-dots menu (US-2/US-3/US-4/US-10). Four live items:
- *   • Toggle full-month view   • Change month
+ * The 3-dots menu (US-2/US-3/US-4/US-10/US-12). Live items:
+ *   • Toggle full-month view   • Change month   • Download PNG
  *   • Frame: 3 swatches (re-tap the worn one to go bare)    • Logout
- * Download PNG (M9) is omitted until its milestone. A frame change keeps the menu open so the
- * change is visible behind it; the other actions close it.
+ * A frame change keeps the menu open so the change is visible behind it; the other actions
+ * (including Download PNG, which opens the export sheet) close it.
  */
 export function CalendarMenu({
   open,
   onClose,
   onToggleView,
   onChangeMonth,
+  onDownload,
   selectedFrame,
   onSetFrame,
 }: {
@@ -26,6 +27,7 @@ export function CalendarMenu({
   onClose: () => void;
   onToggleView: () => void;
   onChangeMonth: () => void;
+  onDownload: () => void;
   selectedFrame: SelectedFrame;
   onSetFrame: (frame: SelectedFrame) => void;
 }) {
@@ -69,6 +71,17 @@ export function CalendarMenu({
           }}
         >
           Change month
+        </MenuButton>
+
+        <Divider />
+
+        <MenuButton
+          onClick={() => {
+            onDownload();
+            onClose();
+          }}
+        >
+          Download PNG
         </MenuButton>
 
         <Divider />

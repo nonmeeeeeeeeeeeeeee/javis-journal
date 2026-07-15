@@ -21,6 +21,7 @@ import { DayPage } from "@/components/day/DayPage";
 import { StickerLayer, visibleGridCenter } from "@/components/sticker/StickerLayer";
 import { StickerTray } from "@/components/sticker/StickerTray";
 import { CalendarMenu } from "./CalendarMenu";
+import { ExportSheet } from "./ExportSheet";
 import { MonthCloseUp } from "./MonthCloseUp";
 import { MonthFull } from "./MonthFull";
 import { MonthPicker } from "./MonthPicker";
@@ -66,6 +67,8 @@ export function Calendar() {
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // M9: the PNG export sheet, opened from the 3-dots menu.
+  const [exportOpen, setExportOpen] = useState(false);
   const [openDay, setOpenDay] = useState<OpenDay | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -355,6 +358,7 @@ export function Calendar() {
         onClose={() => setMenuOpen(false)}
         onToggleView={toggleView}
         onChangeMonth={() => setPickerOpen(true)}
+        onDownload={() => setExportOpen(true)}
         selectedFrame={profile.selectedFrame}
         onSetFrame={(frame) => void setSelectedFrame(frame)}
       />
@@ -364,6 +368,16 @@ export function Calendar() {
           onClose={() => setPickerOpen(false)}
           viewed={{ year, month }}
           onPick={(ym) => setYearMonth(ym)}
+        />
+      ) : null}
+
+      {exportOpen ? (
+        <ExportSheet
+          year={year}
+          month={month}
+          weekStart={profile.startOfWeek}
+          frame={profile.selectedFrame}
+          onClose={() => setExportOpen(false)}
         />
       ) : null}
 
