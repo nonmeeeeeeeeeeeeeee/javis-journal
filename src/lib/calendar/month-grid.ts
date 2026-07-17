@@ -111,6 +111,16 @@ export function todayISO(now: Date = new Date()): string {
   return isoDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
 }
 
+/**
+ * True iff the `YYYY-MM-DD` date is Javi's birthday — July 18, **any year** (month + day
+ * match, year ignored). Drives the permanent pink birthday heart on her calendar cell; unlike
+ * `todayISO`, it is not tied to the current date, so every reachable July 18 wears it forever.
+ */
+export function isBirthday(date: string): boolean {
+  // `YYYY-MM-DD` → the `MM-DD` tail is a stable, year-agnostic key.
+  return date.slice(5) === "07-18";
+}
+
 /** The current real month (device-local). */
 export function currentYearMonth(now: Date = new Date()): YearMonth {
   return { year: now.getFullYear(), month: now.getMonth() + 1 };

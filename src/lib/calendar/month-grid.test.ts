@@ -6,6 +6,7 @@ import {
   currentYearMonth,
   daysInMonth,
   EPOCH,
+  isBirthday,
   isCurrentMonth,
   isMonthInBounds,
   isoDate,
@@ -123,6 +124,22 @@ describe("today / current-month gating", () => {
     expect(isCurrentMonth(2026, 7, now)).toBe(true);
     expect(isCurrentMonth(2026, 6, now)).toBe(false);
     expect(isCurrentMonth(2025, 7, now)).toBe(false);
+  });
+});
+
+describe("isBirthday (July 18 heart)", () => {
+  test("matches July 18 in any year", () => {
+    expect(isBirthday("2026-07-18")).toBe(true);
+    expect(isBirthday("2027-07-18")).toBe(true);
+    expect(isBirthday("2099-07-18")).toBe(true);
+  });
+
+  test("rejects every other day, including July 17/19 and other months' 18th", () => {
+    expect(isBirthday("2026-07-17")).toBe(false);
+    expect(isBirthday("2026-07-19")).toBe(false);
+    expect(isBirthday("2026-08-18")).toBe(false);
+    expect(isBirthday("2026-06-18")).toBe(false);
+    expect(isBirthday("2026-01-18")).toBe(false);
   });
 });
 

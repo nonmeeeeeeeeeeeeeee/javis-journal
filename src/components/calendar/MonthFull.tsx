@@ -1,6 +1,6 @@
 "use client";
 
-import { monthGrid } from "@/lib/calendar/month-grid";
+import { isBirthday, monthGrid } from "@/lib/calendar/month-grid";
 import { DayCell } from "./DayCell";
 import { FramedGrid } from "./FramedGrid";
 import { WeekdayHeader } from "./WeekdayHeader";
@@ -47,6 +47,7 @@ export function MonthFull({
               key={i}
               cell={cell}
               isToday={cell !== null && cell.date === todayDate}
+              isBirthday={cell !== null && isBirthday(cell.date)}
               day={cell ? (data.get(cell.date) ?? null) : null}
               width={cellW}
               onOpen={onOpenDay}

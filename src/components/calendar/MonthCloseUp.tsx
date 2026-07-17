@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 
-import { monthGrid, toColumnMajor } from "@/lib/calendar/month-grid";
+import { isBirthday, monthGrid, toColumnMajor } from "@/lib/calendar/month-grid";
 import { frameBoxInsets } from "@/lib/frames/spec";
 import { DayCell } from "./DayCell";
 import { FramedGrid } from "./FramedGrid";
@@ -94,6 +94,7 @@ export function MonthCloseUp({
                   key={i}
                   cell={cell}
                   isToday={cell !== null && cell.date === todayDate}
+                  isBirthday={cell !== null && isBirthday(cell.date)}
                   day={cell ? (data.get(cell.date) ?? null) : null}
                   width={cellW}
                   onOpen={onOpenDay}

@@ -17,17 +17,22 @@ const CHIP_MIN_FONT_PX = 7;
  * The cell and the page are both 7:6 boxes in the same normalized coordinates, so this is one
  * layout function at two pixel sizes (and the FLIP zoom has nothing to cross-fade).
  *
- * Today is marked via the `today-bg`/`today-ink` tokens.
+ * Today is marked via the `today-bg`/`today-ink` tokens. Javi's birthday (July 18, any year) is
+ * marked instead by a permanent pink heart (`birthday`/`birthday-ink` tokens) that supersedes the
+ * today disc whenever the two land on the same cell.
  */
 export function DayCell({
   cell,
   isToday,
+  isBirthday = false,
   day,
   width,
   onOpen,
 }: {
   cell: GridCell;
   isToday: boolean;
+  /** True on July 18 (any year) — a permanent pink heart that wins over `isToday`. */
+  isBirthday?: boolean;
   day: DayData | null;
   /** The fitted cell width in px — the page width this composition is laid out against. */
   width: number;
@@ -90,25 +95,51 @@ export function DayCell({
         })}
       </div>
 
-      <span
-        className={`absolute z-10 grid place-items-center rounded-full font-bold leading-none ${
-          isToday ? "bg-today-bg text-today-ink" : "text-ink"
-        }`}
-        style={{
-          left: padPx,
-          top: padPx,
-          fontSize: fontPx,
-          minWidth: fontPx * 1.9,
-          height: fontPx * 1.9,
-          // No disc on an ordinary day — the number rides on the photo with a soft halo, so it
-          // stays legible over any stamp while obstructing almost none of it.
-          textShadow: isToday
-            ? undefined
-            : "0 0 2px var(--color-paper), 0 0 4px var(--color-paper)",
-        }}
-      >
-        {cell.day}
-      </span>
+      {isBirthday ? (
+        // Javi's birthday: a permanent pink heart holding the day number, at the same corner as
+        // every other marker. It wins over the today disc. The heart is an inline SVG (fills the
+        // box, so it's crisp at every fitted size across both views); the number rides slightly
+        // high so it sits on the lobes, not over the point.
+        <span
+          className="absolute z-10 grid place-items-center"
+          style={{ left: padPx, top: padPx, width: fontPx * 2.15, height: fontPx * 2 }}
+        >
+          <svg
+            viewBox="0 0 32 29.6"
+            className="absolute inset-0 size-full"
+            fill="var(--color-birthday)"
+            aria-hidden
+          >
+            <path d="M23.6 0c-3.4 0-6.3 2.4-7.6 5.1C14.7 2.4 11.8 0 8.4 0 3.8 0 0 3.8 0 8.4c0 9.3 9.5 11.8 16 21.2 6.5-9.4 16-11.9 16-21.2C32 3.8 28.2 0 23.6 0z" />
+          </svg>
+          <span
+            className="relative font-bold leading-none text-birthday-ink"
+            style={{ fontSize: fontPx, transform: `translateY(${-fontPx * 0.12}px)` }}
+          >
+            {cell.day}
+          </span>
+        </span>
+      ) : (
+        <span
+          className={`absolute z-10 grid place-items-center rounded-full font-bold leading-none ${
+            isToday ? "bg-today-bg text-today-ink" : "text-ink"
+          }`}
+          style={{
+            left: padPx,
+            top: padPx,
+            fontSize: fontPx,
+            minWidth: fontPx * 1.9,
+            height: fontPx * 1.9,
+            // No disc on an ordinary day — the number rides on the photo with a soft halo, so it
+            // stays legible over any stamp while obstructing almost none of it.
+            textShadow: isToday
+              ? undefined
+              : "0 0 2px var(--color-paper), 0 0 4px var(--color-paper)",
+          }}
+        >
+          {cell.day}
+        </span>
+      )}
     </button>
   );
 }

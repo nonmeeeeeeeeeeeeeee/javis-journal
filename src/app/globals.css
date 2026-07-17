@@ -17,6 +17,10 @@
   --color-accent-soft: #f8ebe9;
   --color-today-bg: #b8dfd0;
   --color-today-ink: #285246;
+  /* The permanent birthday heart (July 18). Soft dusty-rose from the accent family — a whisper,
+     not a candy-pink shout — with an ink dark enough to keep the day number legible on it. */
+  --color-birthday: #eaa9b8;
+  --color-birthday-ink: #6b2438;
 
   --font-title: Georgia, "Times New Roman", Times, serif;
   --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -42,6 +46,8 @@
   --color-accent-soft: #f2f2f2;
   --color-today-bg: #111111;
   --color-today-ink: #ffffff;
+  --color-birthday: #d76a8a;
+  --color-birthday-ink: #ffffff;
   --radius-cell: 0;
   --radius-card: 0;
   --radius-control: 0;
@@ -58,6 +64,8 @@
   --color-accent-soft: rgba(122, 156, 130, 0.22);
   --color-today-bg: #f4c95d;
   --color-today-ink: #3c2b21;
+  --color-birthday: #d98aa0;
+  --color-birthday-ink: #4a1f2b;
   --radius-cell: 0.28rem;
   --radius-card: 0.45rem;
   --radius-control: 0.75rem;
